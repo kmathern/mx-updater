@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# this script is part of MX Updater package
+#
+#
+if [ ! -x /usr/bin/mx-updater_unattended_upgrades_log_view ]; then
+    exit 1
+fi
+
+/usr/bin/mx-updater_unattended_upgrades_log_view | /usr/bin/cat
+

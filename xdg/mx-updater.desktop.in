@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+# The desktop entry name will be displayed within the menu.
+Name=MX Updater
+# TRANSLATORS:
+# The desktop entry comment will be shown within the menu.
+Comment=MX Updater system tray applet
+Exec=/usr/bin/mx-updater
+TryExec=/usr/bin/mx-updater
+Icon=mx-updater
+Terminal=false
+StartupNotify=false
+Categories=System;Qt;KDE;Utility;X-KDE-Utilities-Desktop;MX-Software;
+StartupWMClass=mx-updater
+Keywords=apt;update;upgrade;notifier;

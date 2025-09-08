@@ -1,0 +1,255 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the mx-updater package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: mx-updater\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-09-07 16:13+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+msgid "&Close"
+msgstr ""
+
+msgid "&Copy"
+msgstr ""
+
+msgid "About"
+msgstr ""
+
+msgid "About MX Updater"
+msgstr ""
+
+msgid "Auto-update dpkg log(s)"
+msgstr ""
+
+msgid "Auto-update log(s)"
+msgstr ""
+
+msgid ""
+"Automatically answers 'yes' to package management prompts during upgrades.\n"
+"Some system configuration changes may still require manual confirmation."
+msgstr ""
+
+msgid ""
+"Automatically check for package updates once a day and install them.\n"
+"Only updates existing packages without changing your system configuration.\n"
+"The updater icon shows the total number of updates, including automatic updates,\n"
+"when additional updates are available."
+msgstr ""
+
+#. TRANSLATORS: Explains the auto-close behavior of terminal window
+#. after system updates with a configurable idle time
+msgid ""
+"Automatically closes the terminal window after the specified\n"
+"number of seconds of inactivity following system updates."
+msgstr ""
+
+msgid "Changelog"
+msgstr ""
+
+msgid "Check for Updates"
+msgstr ""
+
+msgid "Clear"
+msgstr ""
+
+msgid "Close"
+msgstr ""
+
+msgid ""
+"Display transparent wireframe icons without color fill \n"
+"when no updates are available."
+msgstr ""
+
+msgid "Filter by"
+msgstr ""
+
+msgid ""
+"Hide the system update icon when no updates are available. \n"
+"Untick this box or run \"MX Updater\" from the menu to make the icon visible again."
+msgstr ""
+
+msgid "Hide until updates available"
+msgstr ""
+
+msgid "History"
+msgstr ""
+
+msgid "Icons"
+msgstr ""
+
+msgid ""
+"In addition to change of the tray icon, \n"
+"pop-up messages will be shown when\n"
+"system updates are available."
+msgstr ""
+
+msgid "Left-click behaviour   (when updates are available)"
+msgstr ""
+
+msgid "License"
+msgstr ""
+
+msgid "Log file is empty."
+msgstr ""
+
+msgid "MX Package Installer"
+msgstr ""
+
+msgid "MX Repo Manager"
+msgstr ""
+
+#. The autostart desktop entry name will be shown within the list of autostart entries.
+#. The desktop entry name will be displayed within the menu.
+msgid "MX Updater"
+msgstr ""
+
+msgid "MX Updater preferences"
+msgstr ""
+
+msgid "No updates available"
+msgstr ""
+
+msgid "Other options"
+msgstr ""
+
+msgid "Preferences"
+msgstr ""
+
+msgid "Quit"
+msgstr ""
+
+msgid "Reload"
+msgstr ""
+
+msgid "Restart"
+msgstr ""
+
+msgid "Select this to launch MX Updater automatically at login"
+msgstr ""
+
+#. TRANSLATORS: Explains upgrade can be done by using nala package manager instead of apt
+msgid "Select this to use nala package manager instead of apt."
+msgstr ""
+
+msgid "Synaptic"
+msgstr ""
+
+msgid "Tray applet to notify of system and application updates"
+msgstr ""
+
+msgid "Upgrade mode"
+msgstr ""
+
+msgid ""
+"Upgrades all packages to their latest versions, \n"
+"which may include adding or removing packages\n"
+"to keep the system up-to-date and consistent."
+msgstr ""
+
+msgid "Upgrades available"
+msgstr ""
+
+msgid ""
+"Upgrades existing packages to their latest versions \n"
+"without installing new dependencies or removing existing packages."
+msgstr ""
+
+msgid "View and Upgrade"
+msgstr ""
+
+msgid "automatically confirm all package upgrades"
+msgstr ""
+
+msgid "basic upgrade"
+msgstr ""
+
+#. TRANSLATORS: After the idle time in seconds has elapsed,
+#. the terminal window is closed once the system update is complete.
+msgid "close terminal window automatically after idle time"
+msgstr ""
+
+msgid "full upgrade"
+msgstr ""
+
+msgid "full upgrade   (recommended)"
+msgstr ""
+
+msgid "hide until updates available"
+msgstr ""
+
+msgid "opens MX Updater 'View and Upgrade' window"
+msgstr ""
+
+msgid "opens Synaptic"
+msgstr ""
+
+#. TRANSLATORS: This is the abriavated string for 'seconds' shown within
+#. the timeout selection field. Please use the most appropriate trnslated
+#. string for the singular or plural form. Only one form is shown.
+msgid "sec."
+msgstr ""
+
+msgid "start MX Updater at login"
+msgstr ""
+
+msgid "update automatically"
+msgstr ""
+
+msgid "upgrade"
+msgstr ""
+
+msgid "use desktop notifications"
+msgstr ""
+
+#. TRANSLATORS: Select this to use nala package manager instead of apt.
+msgid "use nala"
+msgstr ""
+
+msgid "use transparent interior for no-updates wireframe"
+msgstr ""
+
+#, python-brace-format
+msgid "{num} new update available"
+msgid_plural "{num} new updates available"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS:
+#. The autostart desktop entry comment will be shown within 'Session and Startup' (Autostart).
+msgid "An applet to show updates"
+msgstr ""
+
+#. TRANSLATORS:
+#. The desktop entry comment will be shown within the menu.
+msgid "MX Updater system tray applet"
+msgstr ""
+
+msgid "apt;update;upgrade;notifier;"
+msgstr ""
+
+msgid "Disable Auto-update"
+msgstr ""
+
+msgid "Enable Auto-update"
+msgstr ""
+
+msgid "basic upgrade"
+msgstr ""
+
+msgid "full upgrade"
+msgstr ""
+
+msgid "Reload"
+msgstr ""

@@ -1,0 +1,194 @@
+#!/usr/bin/bash
+
+ME="${0##*/}"
+
+# sanity check - set path
+PATH=/usr/local/bin:/usr/bin:/usr/sbin
+
+# do not run ME as root
+if [ "$(id -u)" -eq 0 ]; then
+    echo "E: Could not run '$ME' as root" >&2
+    exit 1
+fi
+
+LOCK_TAG="lock_is_held"
+LOCK_IS_HELD="false"
+if [ "$1" = "$LOCK_TAG" ]; then
+    LOCK_IS_HELD="true"
+    shift
+fi
+
+# ---------------------------------------------------------------------
+# tag                   executable
+# ---------------------------------------------------------------------
+# synaptic              /usr/sbin/synaptic
+# packageinstaller      /usr/bin/mx-packageinstaller
+# repo_manager          /usr/bin/mx-repo-manager
+# updater_reload        /usr/lib/apt-notifier/bin/updater_reload_run
+# view_and_upgrade      /usr/libexec/mx-updater/updater-view-and-upgrade
+# apt_history           /usr/lib/apt-notifier/bin/apt_history.py
+
+#  ("auto_update_log",      _("Auto-update log(s)"),      True,  "/usr/lib/apt-notifier/bin/view_unattended_upgrades_logs.py"),
+#  ("auto_update_dpkg_log", _("Auto-update dpkg log(s)"), True,  "/usr/lib/apt-notifier/bin/view_unattended_upgrades_dpkg_logs.py"),
+  
+# ---------------------------------------------------------------------
+
+TRAYICON_OBJECT_NAME="org.mxlinux.UpdaterSystemTrayIcon"
+TRAYICON_OBJECT_PATH="/org/mxlinux/UpdaterSystemTrayIcon"
+TRAYICON_OBJECT_IFACE="org.mxlinux.UpdaterSystemTrayIcon"
+
+
+# set to false for progs sending dbus callbacks
+DBUS_SEND="true"
+case "$1" in
+    synaptic)
+        PROG_NAME="synaptic"
+        PROG_EXEC="/usr/bin/synaptic-pkexec"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+    packageinstaller)
+        PROG_NAME="packageinstaller"
+        PROG_EXEC="/usr/bin/mx-packageinstaller"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    updater_reload)
+        PROG_NAME="updater_reload"
+        PROG_EXEC="/usr/lib/mx-updater/bin/updater_reload_run"
+        LOCK_NAME="$PROG_NAME"
+        # DBUS_SEND="false"
+        ;;
+
+    updater_upgrade)
+        PROG_NAME="updater_upgrade"
+        PROG_EXEC="/usr/lib/mx-updater/bin/updater_upgrade_run"
+        LOCK_NAME="$PROG_NAME"
+        DBUS_SEND="false"
+        ;;
+
+    repo_manager)
+        PROG_NAME="repo_manager"
+        PROG_EXEC="/usr/bin/mx-repo-manager"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    view_and_upgrade)
+        PROG_NAME="view_and_upgrade"
+        PROG_EXEC="/usr/libexec/mx-updater/updater-view-and-upgrade.py"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    apt_history)
+        PROG_NAME="apt_history"
+        PROG_EXEC="/usr/libexec/mx-updater/updater-history.py"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    auto_update_log)
+        PROG_NAME="auto_update_log"
+        PROG_EXEC="/usr/libexec/mx-updater/mx-updater-auto-update_log.py"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    auto_update_dpkg_log)
+        PROG_NAME="auto_update_dpkg_log"
+        PROG_EXEC="/usr/libexec/mx-updater/mx-updater-auto-update_dpkg_log.py"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    settings_editor)
+        PROG_NAME="updater-settings"
+        #PROG_EXEC="/usr/bin/mx-updater-settings"
+        PROG_EXEC="/usr/libexec/mx-updater/updater-settings.py"
+        LOCK_NAME="none"
+        DBUS_SEND="false"
+        ;;
+
+    updater_about)
+        PROG_NAME="updater_about"
+        PROG_EXEC="/usr/libexec/mx-updater/updater_about.py"
+        LOCK_NAME="$PROG_NAME"
+        ;;
+
+    updater_restart)
+        PROG_NAME="updater-restart"
+        PROG_EXEC="/usr/libexec/mx-updater/updater-restart"
+        LOCK_NAME="none"
+        DBUS_SEND="false"
+        ;;
+
+        #---------------------------------------------------------
+        "")
+        echo "E: [$ME] - Run tag parameter required - exit 1" >&2
+        exit 1
+        ;;
+        *)
+        echo "E: [$ME] - Unknown run tag '$1' - exit 1" >&2
+        exit 1
+        ;;
+        #---------------------------------------------------------
+esac
+# /usr/bin/mx-updater-preferences
+
+if ! [ -x "$PROG_EXEC" ]; then
+    echo "E: [$ME] - Could not run '$PROG_NAME'. Not found or not executable: '$PROG_EXEC' - exit 1" >&2
+    exit 1
+fi
+
+if [ "$LOCK_NAME" == "none" ]; then
+    exec "$PROG_EXEC"
+    exit 0
+fi
+
+# run once with lock
+if [ -d /run/lock ] && [ -w /run/lock ]; then
+    LOCK_DIR="/run/lock"
+elif [ -d "/run/user/$(id -u)" ] && [ -w "/run/user/$(id -u)" ] ; then
+    LOCK_DIR="/run/user/$(id -u)"
+else
+    LOCK_DIR=/tmp
+    LOCK_NAME="$(id -u)-${LOCK_NAME}"
+fi
+LOCK_NAME="${ME}_${LOCK_NAME}_$(id -u)"
+LOCK_FILE="${LOCK_DIR}/${LOCK_NAME}.lock"
+    
+if [ "$LOCK_IS_HELD" = "false" ]; then
+    # Maintain a lock on fd 3
+    exec 3>"${LOCK_FILE}"
+    if ! flock -n 3; then
+        echo "E: [$ME] - Could not acquire lock '$LOCK_NAME.lock' - exit 1" >&2
+        exit 1
+    fi
+
+    # Hold the lock and rerun ME as a child.
+    echo "[$ME] - Run '$PROG_NAME' with lock '$LOCK_NAME.lock'" >&2
+    "$0" "$LOCK_TAG" "$@" 3>&-
+    exit $?
+fi
+# cleanup
+# shellcheck disable=SC2064
+trap "echo '[$ME] - Cleaning up $LOCK_NAME.lock...' >&2; rm  '$LOCK_FILE'" EXIT
+unset LOCK_DIR LOCK_FILE LOCK_NAME LOCK_TAG
+
+# exec prog
+RET=0
+if [ -x "$PROG_EXEC" ]; then
+    if command -v  dbus-send >/dev/null && [ "$DBUS_SEND" = "true" ]; then
+        #echo dbus-send --session --dest="${TRAYICON_OBJECT_NAME}" --type=signal "${TRAYICON_OBJECT_PATH}" "${TRAYICON_OBJECT_IFACE}.ActionEntryEnabled" string:"$PROG_NAME" boolean:false
+        dbus-send --session --dest="${TRAYICON_OBJECT_NAME}" --type=signal "${TRAYICON_OBJECT_PATH}" "${TRAYICON_OBJECT_IFACE}.ActionEntryEnabled" string:"$PROG_NAME" boolean:false
+    fi
+    # LC_TYPE fix for locale tr_TR lower/uppercase issue for strings with "i" "I" like Uris in deb822 sources stanzas
+    # but also for file ignore pattern like "dist-*" or "disaled" 
+    export LC_CTYPE="C.UTF-8"
+    "$PROG_EXEC"
+    RET="$?"
+    if command -v  dbus-send >/dev/null && [ "$DBUS_SEND" = "true" ]; then
+        # sleep a tad
+        sleep 1
+        #echo dbus-send --session --dest="${TRAYICON_OBJECT_NAME}" --type=signal "${TRAYICON_OBJECT_PATH}" "${TRAYICON_OBJECT_IFACE}.ActionEntryEnabled" string:"$PROG_NAME" boolean:true
+        dbus-send --session --dest="${TRAYICON_OBJECT_NAME}" --type=signal "${TRAYICON_OBJECT_PATH}" "${TRAYICON_OBJECT_IFACE}.ActionEntryEnabled" string:"$PROG_NAME" boolean:true
+    fi
+    
+fi
+exit "$RET"
+

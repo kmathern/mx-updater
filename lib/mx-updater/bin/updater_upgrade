@@ -1,0 +1,196 @@
+#!/bin/bash
+
+# script to upgrade packages with user's preferred upgrade type
+# this script is part of apt-notifier package
+
+# translations are defined within apt-notifier python modules
+# define a function to make xgettext ignore translations used here
+mygettext() { gettext "$@"; }
+
+# check privs
+if [ $(id -u) != 0 ]; then
+    MSG='This command needs %s privileges to be executed.\n'
+    printf "$(mygettext -d su-to-root "$MSG")" 'root'
+    exit 1
+fi
+
+#-----------------------------------------------------------------------
+# set less-prompt
+#
+export TEXTDOMAINDIR="/usr/share/locale"
+export LESS="-Ps"$(gettext -d util-linux "[Press space to continue, 'q' to quit.]")
+
+:<<NotUsed
+if [ ! -e /etc/apt/sources.list ]; then
+    cat <<EOF > /etc/apt/sources.list
+#This sources.list is empty by default and is only included
+#to avoid error messages from some package install scripts that expect
+#to find it.
+#Sources are under /etc/apt/sources.list.d
+EOF
+fi
+NotUsed
+
+UPDATER_SHLIB=/usr/lib/mx-updater/shlib/updater_shlib
+
+if [ -f "$UPDATER_SHLIB" ]; then
+      . "$UPDATER_SHLIB"
+fi
+
+read -r UPGRADE_TYPE < <(get_config_item "upgrade_type" "full-upgrade")
+read -r UPGRADE_ASSUME_YES < <(get_config_item "upgrade_assume_yes" "false")
+read -r AUTO_CLOSE < <(get_config_item "auto_close" "true")
+
+read -r UPDATER_USE_NALA < <(get_config_item "use_nala" "false")
+read -r AUTO_CLOSE_TIMEOUT < <(get_config_item "auto_close_timeout" "10")
+
+
+# use nala if needed
+#
+
+#UPGRADE_TYPE=$(     grep -oP '^UPGRADE_TYPE=\K.*'      "$APT_NOTIFIERRC" 2>/dev/null)
+#UPGRADE_ASSUME_YES=$(grep -oP '^UPGRADE_ASSUME_YES=\K.*' "$APT_NOTIFIERRC" 2>/dev/null)
+#AUTO_CLOSE=$(grep -oP '^AUTO_CLOSE=\K.*' "$APT_NOTIFIERRC" 2>/dev/null)
+
+read -r UPGRADE_TYPE < <(get_config_item "upgrade_type" "full-upgrade")
+read -r UPGRADE_ASSUME_YES < <(get_config_item "upgrade_type" "full-upgrade")
+read -r AUTO_CLOSE  < <(get_config_item "auto_close" "true")
+
+# upgrade type dist-upgrade or upgrade
+if [ "$UPGRADE_TYPE" != "full-upgrade" ]; then
+    UPGRADE_TYPE="upgrade"
+    APTGET_UPGRADETYPE="upgrade"
+fi
+if [ "$UPGRADE_TYPE" = "full-upgrade" ]; then
+    APTGET_UPGRADETYPE="dist-upgrade"
+fi
+
+
+export TEXTDOMAIN=mx-updater
+
+# assume yes handling
+if [ "$UPGRADE_ASSUME_YES" = "true" ]; then
+    AssumeYes="--assume-yes"
+else
+    AssumeYes=""
+fi
+
+# apt preference handling
+UPDATER_APTPREF=/usr/lib/mx-updater/shlib/updater_aptpref
+AptPref_Opts=""
+if [ -f "$UPDATER_APTPREF" ]; then
+      . "$UPDATER_APTPREF"
+fi
+
+# use nala if desired and available
+
+: ${UPDATER_USE_NALA:=false}
+export UPDATER_USE_NALA
+if [ x"${APT_NOTIFIER_CONFIG_ITEMS[use_nala]}" = x"true" ]; then
+    UPDATER_USE_NALA=true
+    if ! which nala >/dev/null; then
+       UPDATER_USE_NALA=false
+    fi
+fi
+
+# check if the last apt update run was less than 2 minutes ago
+update_stamp=$(find /var/lib/apt/periodic/update-stamp -mmin -2 2>/dev/null)
+
+if [ x"$UPDATER_USE_NALA" = x"true" ]; then
+    Nala_Pref="--no-autoremove"
+    if [ -z "$update_stamp" ]; then
+        Nala_Update_Pref="--update"
+        nala update
+    else
+        Nala_Update_Pref="--no-update"
+    fi
+    Nala_Update_Pref="--no-update"
+
+    #[ -z "$update_stamp" ] && Nala_Update_Pref="--update" || Nala_Update_Pref="--no-update"
+    if [ "$UPGRADE_TYPE" = "upgrade" ]; then
+        Nala_UPGRADE_TYPE="--no-full"
+    else
+        Nala_UPGRADE_TYPE="--full" # default
+    fi
+
+    Nala_Update_Pref_Raw=""
+    LINUX_DKMS_COUNT=$(
+        LANGUAGE= LC_ALL= LANG=C
+        apt-get $AptPref_Opts -o Debug::NoLocking=true --trivial-only -V $APTGET_UPGRADETYPE 2>/dev/null |
+        sed -nr '/^The following.*will be (installed|upgraded):/,${
+                 s/^\s+//;
+                 /^linux-image-|^[^\s]*-dkms/p};
+                ' | wc -l )
+
+    if (( LINUX_DKMS_COUNT != 0 )); then
+        Nala_Update_Pref_Raw=" --raw-dpkg"
+    fi
+
+    [ y"${DEBUG_APT_NOTIFIER/true/es}" = "yes" ] &&  echo nala upgrade $AptPref_Opts $Nala_UPGRADE_TYPE $Nala_Pref $AssumeYes
+    echo "nala upgrade $Nala_UPGRADE_TYPE $Nala_Pref $Nala_Update_Pref_Raw"
+    nala upgrade $AptPref_Opts $Nala_UPGRADE_TYPE $Nala_Pref $Nala_Update_Pref $Nala_Update_Pref_Raw $AssumeYes
+    if [ "$Nala_Update_Pref" = "--update" ]; then
+       [ -d /var/lib/apt/periodic ] || mkdir -p /var/lib/apt/periodic
+       touch /var/lib/apt/periodic/update-stamp
+    fi
+
+else
+    if [ -z "$update_stamp" ]; then
+       echo apt update
+       apt update --option 'APT::Cmd::Show-Update-Stats=0'
+       [ -d /var/lib/apt/periodic ] || mkdir -p /var/lib/apt/periodic
+       touch /var/lib/apt/periodic/update-stamp
+    fi
+    echo apt $UPGRADE_TYPE
+        if [ "$UPGRADE_TYPE" = "upgrade" ]
+          then
+            AptPref_Opts+=" -o APT::Get::Upgrade-Allow-New=false"
+            AptPref_Opts+=" -o Binary::apt::APT::Get::Upgrade-Allow-New=false"
+          else
+            AptPref_Opts+=" -o APT::Get::Upgrade-Allow-New=true"
+            AptPref_Opts+=" -o Binary::apt::APT::Get::Upgrade-Allow-New=true"
+        fi
+    apt --verbose-versions $AssumeYes $AptPref_Opts $UPGRADE_TYPE
+fi
+
+echo ""
+
+if [ "$UPGRADE_TYPE" = "upgrade" ]; then
+    mygettext "basic upgrade complete (or was canceled)"; echo
+else
+    mygettext "full upgrade complete (or was canceled)"; echo
+fi
+
+# auto close timeout
+AUTO_CLOSE_TIMEOUT="${APT_NOTIFIER_CONFIG_ITEMS[upgrade_auto_close_timeout]}"
+default_timeout=10
+if [ -z "${AUTO_CLOSE_TIMEOUT}" ]; then
+    AUTO_CLOSE_TIMEOUT=$default_timeout
+fi
+if [ -n "${AUTO_CLOSE_TIMEOUT//[0-9]/}" ]; then
+    AUTO_CLOSE_TIMEOUT=$default_timeout
+fi
+
+UPDATER_SHLIB=/usr/lib/apt-notifier/shlib/updater_shlib
+if [ -f "$UPDATER_SHLIB" ]; then
+      . "$UPDATER_SHLIB"
+fi
+echo
+mygettext "this terminal window can now be closed"
+echo
+echo
+
+default_timeout=10
+if [ -z "${AUTO_CLOSE_TIMEOUT}" ]; then
+    AUTO_CLOSE_TIMEOUT=$default_timeout
+fi
+if [ -n "${AUTO_CLOSE_TIMEOUT//[0-9]/}" ]; then
+    AUTO_CLOSE_TIMEOUT=$default_timeout
+fi
+
+if [ "$AUTO_CLOSE" = "true" ]; then
+    press_any_key_stop_auto_close && exit
+fi
+press_any_key_to_close && exit
+
+exit

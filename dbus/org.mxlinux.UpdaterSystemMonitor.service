@@ -1,0 +1,11 @@
+[D-BUS Service]
+#
+# This file is part of MX Updater package
+#
+# systemwide auto-activation file:
+# /usr/share/dbus-1/system-services/org.mxlinux.UpdaterSystemMonitor.service
+#
+Name=org.mxlinux.UpdaterSystemMonitor
+Exec=/usr/bin/python3 /usr/libexec/mx-updater/updater-system-monitor.py --debug --no-color
+User=root
+#StartupNotify=false

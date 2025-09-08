@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+    /usr/share/polkit-1/actions/org.mxlinux.mx-updater.unattended_upgrades_dpkg_log_view.policy
+!-->
+ <policyconfig>
+  <vendor>MX Linux</vendor>
+  <vendor_url>https://mxlinux.org</vendor_url>
+  <action id="org.mxlinux.mx-updater.unattended_upgrades_dpkg_log_view">
+    <description>Run MX Linux application</description>
+    <message gettext-domain="mx-updater">Reload</message>
+    <icon_name>mx-updater</icon_name>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/mx-updater/updater_auto_upgrades_dpkg_log_view</annotate>
+  </action>
+</policyconfig>
