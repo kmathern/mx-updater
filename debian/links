@@ -1,0 +1,12 @@
+usr/lib/mx-updater/actions/auto-update              usr/lib/mx-updater/actions/auto-update-disable
+usr/lib/mx-updater/actions/auto-update              usr/lib/mx-updater/actions/auto-update-enable
+usr/lib/mx-updater/actions/updater_action           usr/lib/mx-updater/actions/updater_basic-upgrade_action
+usr/lib/mx-updater/actions/updater_action           usr/lib/mx-updater/actions/updater_full-upgrade_action
+usr/lib/mx-updater/actions/updater_action           usr/lib/mx-updater/actions/updater_reload_action
+usr/lib/mx-updater/actions/unattended_upgrades_log  usr/lib/mx-updater/actions/unattended_upgrades_dpkg_log
+usr/lib/mx-updater/bin/updater_upgrade_run          usr/lib/mx-updater/bin/updater_basic-upgrade_run
+usr/lib/mx-updater/bin/updater_upgrade_run          usr/lib/mx-updater/bin/updater_full-upgrade_run
+usr/share/mx-updater/1-quick-live-update            etc/cron.daily/1-quick-live-update
+usr/share/mx-updater/2-apt-compat                   etc/cron.daily/2-apt-compat
+usr/share/mx-updater/03mx-updater-update-stamp      etc/apt/apt.conf.d/03mx-updater-update-stamp
+

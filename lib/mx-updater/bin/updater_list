@@ -1,0 +1,31 @@
+#!/bin/bash
+
+UPDATER_APTPREF=/usr/lib/mx-updater/shlib/updater_aptpref
+UPDATER_SHLIB=/usr/lib/mx-updater/shlib/updater_shlib
+
+AptPref_Opts=""
+if [ -f "$UPDATER_APTPREF" ]; then
+      . "$UPDATER_APTPREF"
+fi
+
+if [ -f "$UPDATER_SHLIB" ]; then
+      . "$UPDATER_SHLIB"
+fi
+
+# UpgradeType:  upgrade or full-upgrade
+UpgradeCounts=""
+DistUpgradeCounts=""
+
+UpgradeType="full-upgrade"
+read -r UpgradeType < <(get_config_item "upgrade_type" "full-upgrade")
+
+if [ "$UpgradeType" != "full-upgrade" ]; then
+       UpgradeType="upgrade"
+       AptPref_Opts+=" -o APT::Get::Upgrade-Allow-New=0"
+else
+       UpgradeType="full-upgrade"
+       AptPref_Opts+=" -o APT::Get::Upgrade-Allow-New=1"
+fi
+
+LC_CTYPE="C.UTF-8" apt-get $AptPref_Opts -o Debug::NoLocking=true --trivial-only -V $UpgradeType 2>/dev/null
+

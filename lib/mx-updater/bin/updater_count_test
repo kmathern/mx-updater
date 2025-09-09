@@ -1,0 +1,222 @@
+#!/bin/bash
+
+# this script is part of mx-updater package
+#
+
+ME=${0##*/}
+
+if [ "${MX_UPDATE_DEBUG-false}" = "true" ]; then
+    LOG=/tmp/mx-updater_debug_${ME}_$(logname).log
+    echo "$(date -R) : $0 $@" >> $LOG
+    exec > >( tee -a "$LOG") 2>&1
+fi
+
+usage() {
+    cat<<USAGE
+
+$ME - helper script to display available updates
+      part of mx-updater package
+
+Usage: $ME [options]
+
+    Without options a first localized (translated) line of the total
+    count-number (C) of available updates in the form
+
+    {C} new updates available
+
+    will be displayed followed by a 2nd line with some more aditional
+    details about the number of new (N), removed (R) and not upgraded (P)
+    packages in the form
+
+    ({C} upgraded, {N} newly installed, {R} to remove and {P} not upgraded.)
+
+Options:
+        -c|--count         display the count number only
+        -b|--both          display the count numbers for full-upgrade and upgrade
+        -f|--full-upgrade  display the counts for full-upgrade
+        -d|--dist-upgrade  same as -f|--full-upgrade
+        -u|--upgrade       display the counts for upgrade
+        -h|--help          display this help text
+
+    If neither -d/-f nor -u is specified, the upgrade type "full-upgrade"
+    or "upgrade" is determined based on the user's updater settings.
+
+    If -d/-f and -u are specified, --both is implicitly set and the displayed
+    count line consists of two count numbers followed by the upgrade type
+    selected by the user, separated by colons ":" in the format
+    {full-upgrade-counts}:{upgrade-counts}:{UpgradeType}
+
+USAGE
+exit 1
+}
+
+UPDATER_SHLIB=/usr/lib/mx-updater/shlib/updater_shlib
+UPDATER_APTPREF=/usr/lib/mx-updater/shlib/updater_aptpref
+
+UPDATER_APTPREF=./updater_aptpref
+
+AptPref_Opts=""
+if [ -f "$UPDATER_APTPREF" ]; then
+      . "$UPDATER_APTPREF"
+fi
+
+if [ -f "$UPDATER_SHLIB" ]; then
+      . "$UPDATER_SHLIB"
+fi
+
+# translations are defined within apt-notifier python modules
+# define functions to make xgettext ignore translations used here
+mygettext()  { gettext  -d mx-updater "$@"; }
+myngettext() { ngettext -d mx-updater "$@"; }
+
+D="" ; C="" ; U=""
+CheckType=""
+
+for i in "$@"; do
+   case "$i" in
+     -c|--count)        C="true";;
+     -b|--both)         C="true"; CheckType="both";;
+     -d|--dist-upgrade) D="full-upgrade"; CheckType=$D;;
+     -f|--full-upgrade) D="full-upgrade"; CheckType=$D;;
+     -u|--upgrade)      U="upgrade"; CheckType=$U ;;
+     -h|--help)         usage;;
+      *)                usage;;
+   esac
+done
+
+if [ -n "$D" ] && [ -n "$U" ]; then
+    CheckType="both"
+    C="true"
+fi
+
+if [ -n "$C" ]; then
+    # only show the number of available updates
+    DISPLAY_COUNT_NUMBER_ONLY=true
+else
+    # show the count line's
+    DISPLAY_COUNT_NUMBER_ONLY=false
+fi
+
+
+# UpgradeType:  full-upgrade or upgrade
+
+#UpgradeType=$(get_config_item "upgrade_type" "full-upgrade")
+read -r UpgradeType < <(get_config_item "upgrade_type" "full-upgrade")
+
+if [ "$UpgradeType" == "dist-upgrade" ] || [ "$UpgradeType" == "full-upgrade" ]; then
+    UpgradeType="full-upgrade"
+else
+    UpgradeType="upgrade"
+fi
+
+if [ -z "${CheckType}" ]; then
+    CheckType="$UpgradeType"
+fi
+
+
+UpgradeCount=""
+DistUpgradeCounts=""
+CountLine=""
+Count=""
+
+case "$CheckType" in
+
+    upgrade|dist-upgrade|full-upgrade)
+        : "${LC_MESSAGES:=$LANG}"
+        # TEST
+        echo "LANG=C.UTF-8 LC_MESSAGES=$LC_MESSAGES apt-get $AptPref_Opts -o Debug::NoLocking=true --trivial-only -V $CheckType 2>/dev/null | sed -nr '/^[[:space:]]/d; /[[:space:]][0-9]+[[:space:]]/{p;q}'"
+        
+
+        APT_MSG=$(LANG=C.UTF-8 LC_MESSAGES=$LC_MESSAGES apt-get $AptPref_Opts -o Debug::NoLocking=true --trivial-only -V $CheckType 2>/dev/null | sed -nr '/^[[:space:]]/d; /[[:space:]][0-9]+[[:space:]]/{p;q}')
+        up=0 new=0 x=""
+        read -r up new x < <(echo ${APT_MSG} | tr -c '[:digit:]' ' ');
+        Count=$((up+new))
+
+        if [ -z "$C" ]; then
+            CountLine="$APT_MSG"
+            ## orig:
+            ## CountLine=$(grep -E '^[0-9]| [0-9]+ '<<<$APT_MSG)
+        fi
+        ;;
+
+    both)
+        Count=""
+        # orig
+        #APT_MSG=$(apt-get -s $AptPref_Opts dist-upgrade)
+        #DistUpgradeCount=$(grep -c  '^Inst '<<<$APT_MSG)
+        #APT_MSG=$(apt-get -s $AptPref_Opts upgrade)
+        #UpgradeCount=$(grep -c  '^Inst '<<<$APT_MSG)
+        # new
+        APT_MSG=$(LANG=C.UTF-8 LC_ALL=C.UTF-8 apt-get $AptPref_Opts -o Debug::NoLocking=true --trivial-only -V full-upgrade 2>/dev/null | sed -nr '/^[[:space:]]/d; /[[:space:]][0-9]+[[:space:]]/{p;q}')
+        up=0 new=0 x=""
+        read -r up new x < <(echo ${APT_MSG} | tr -c '[:digit:]' ' ');
+        DistUpgradeCount=$((up+new))
+
+        APT_MSG=$(LANG=C.UTF-8 LC_ALL=C.UTF-8 apt-get $AptPref_Opts -o Debug::NoLocking=true --trivial-only -V upgrade 2>/dev/null | sed -nr '/^[[:space:]]/d; /[[:space:]][0-9]+[[:space:]]/{p;q}')
+        up=0 new=0 x=""
+        read -r up new x < <(echo ${APT_MSG} | tr -c '[:digit:]' ' ');
+        UpgradeCount=$((up+new))
+        ;;
+esac
+
+
+if [ "$DISPLAY_COUNT_NUMBER_ONLY" == "true" ]; then
+    case "$CheckType" in
+        both)  echo "${DistUpgradeCount}:${UpgradeCount}:${UpgradeType}" ;;
+           *)  echo "$Count" ;;
+    esac
+else
+    case $Count in
+        "") :
+            ;;
+        0)  # untranslated old non-plurals msg
+            umsg="0 updates available"
+            # translated old non-plurals msg
+            tmsg=$(mygettext "$umsg")
+
+            numsg='No updates available'
+            nmsg=$(mygettext "$numsg")
+            ;;
+        1)  # untranslated old non-plurals msg
+            umsg='1 new update available'
+            # translated old non-plurals msg
+            tmsg=$(mygettext "$umsg")
+
+            numsg='{num} new update available'
+            nmsg=$(myngettext '{num} new update available'  '{num} new updates available' $Count)
+            nmsg="${nmsg/\{num\}/$Count}"
+            numsg="${nmsg/\{num\}/$Count}"
+            ;;
+        *)  # untranslated old non-plurals msg
+            umsg='$count new updates available'
+            # translated old non-plurals msg
+            tmsg=$(mygettext "$umsg")
+            tmsg="${tmsg/\$count/$Count}"
+
+            numsg='{num} new updates available'
+            nmsg=$(myngettext '{num} new update available'  '{num} new updates available' $Count)
+            nmsg="${nmsg/\{num\}/$Count}"
+            numsg="${numsg/\{num\}/$Count}"
+            ;;
+    esac
+
+
+    # check we have translations of the plurals msg
+    if [ "$nmsg" != "$numsg" ]; then
+        # yep, translated - we take the new plurals msg
+        msg="$nmsg"
+    else
+        # check we have translated old non-plurals msg
+        if [ "$tmsg" != "$umsg" ]; then
+            # yep, so we take the old translated one
+            msg=$tmsg
+        else
+            # neither old non-plurals nor new plurals are translated
+            # se we take the new plurals msg
+            msg=$nmsg
+        fi
+    fi
+    UpdatesMsg=$msg
+    echo "$UpdatesMsg"
+    echo "($CountLine)";
+fi

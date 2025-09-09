@@ -1,0 +1,4 @@
+#!/bin/sh
+
+export MX_UPDATER_PATH=/usr/libexec/mx-updater
+exec /usr/libexec/mx-updater/updater-launch.py $@

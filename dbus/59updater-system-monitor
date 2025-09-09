@@ -1,0 +1,10 @@
+// This file is provided by MX Updater to inform UpdaterSystemMonitor of potential changes
+
+APT::Update::Post-Invoke-Success {
+"/usr/bin/test -e /usr/share/dbus-1/system-services/org.mxlinux.UpdaterSystemMonitor.service && /usr/bin/test -S /run/dbus/system_bus_socket && /usr/bin/test -x /usr/bin/dbus-send && /usr/bin/dbus-send --system --dest=org.mxlinux.UpdaterSystemMonitor --type=method_call  --print-reply --reply-timeout=2000 /org/mxlinux/UpdaterSystemMonitor org.mxlinux.UpdaterSystemMonitor.StateChanged > /dev/null; /bin/echo > /dev/null";
+};
+
+DPkg::Post-Invoke {
+"/usr/bin/test -e /usr/share/dbus-1/system-services/org.mxlinux.UpdaterSystemMonitor.service && /usr/bin/test -S /run/dbus/system_bus_socket && /usr/bin/test -x /usr/bin/dbus-send && /usr/bin/dbus-send --system --dest=org.mxlinux.UpdaterSystemMonitor --type=method_call --print-reply --reply-timeout=2000 /org/mxlinux/UpdaterSystemMonitor org.mxlinux.UpdaterSystemMonitor.StateChanged > /dev/null; /bin/echo > /dev/null";
+};
+

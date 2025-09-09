@@ -1,0 +1,1863 @@
+#!/usr/bin/python3
+
+
+import os
+import sys
+import glob
+import stat
+from pathlib import Path
+
+
+# Check root early. And do't let MX Updater run as root
+if os.getuid() == 0:
+    print("MX Updater should not be run as root. Please run it in user mode.")
+    sys.exit(1)
+
+#----------
+# Argparser
+#----------
+import argparse
+
+help_text="""
+
+MX Updater will sit with the system tray icon and notify about available package updates.
+
+"""
+
+parser = argparse.ArgumentParser(
+        description='MX Updater System Tray Icon',
+        formatter_class=argparse.RawDescriptionHelpFormatter, epilog=help_text
+        )
+
+parser.add_argument("-d", "--debug",
+                    help="Print debugging information.",
+                    action="store_true")
+
+parser.add_argument("-a", "--autostart",
+                    help="Exit if MX Updater preference 'autostart' is disabled.",
+                    action="store_true")
+
+args = parser.parse_args()
+
+#----------
+# Logger
+#----------
+import logging
+
+#----------
+# Classes
+#----------
+
+class CustomFormatter(logging.Formatter):
+    # override formatTime
+    def formatTime(self, record, datefmt=None):
+        # current time with milliseconds
+        millis = int(record.created * 1000) % 1000
+        # only include hours, minutes and seconds
+        time_str = super().formatTime(record, datefmt="%H:%M:%S")
+        # add milliseconds
+        return f"{time_str},{millis:03d}"
+
+    def format(self, record):
+        # format with original method
+        return super().format(record)
+
+
+logger = logging.getLogger(__name__)
+
+if args.debug:
+    logger.setLevel(logging.DEBUG)
+else:
+    logger.setLevel(logging.INFO)
+
+# log stream handler to stdout
+log_handler = logging.StreamHandler(sys.stdout)
+log_handler.setLevel(logging.DEBUG)
+# custom formatter
+mx_updater = "MX Updater"
+#formatter = CustomFormatter('%(asctime)s %(levelname)-8s %(name)s: %(message)s')
+#formatter = CustomFormatter('%(asctime)s [mx_updater] %(levelname)-8s: %(message)s')
+formatter = CustomFormatter('%(asctime)s [mx_updater] %(levelname)s: %(message)s')
+
+log_handler.setFormatter(formatter)
+
+# add handler to logger
+logger.addHandler(log_handler)
+
+#----------
+# Check MX_UPDATER_PATH
+#----------
+
+try:
+    MX_UPDATER_PATH = os.environ["MX_UPDATER_PATH"]
+except KeyError:
+    print("MX_UPDATER_PATH missing from environment, exiting")
+    logger.error("MX_UPDATER_PATH missing from environment, exiting")
+    sys.exit(1)
+
+sys.path.insert(0, MX_UPDATER_PATH)
+
+#----------
+import subprocess
+import re
+import gettext
+import threading
+import json
+
+import dbus
+import dbus.service
+import dbus.mainloop.glib
+from gi.repository import GLib
+import notify2
+from pathlib import Path
+import signal
+
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PyQt6.QtGui import QIcon, QAction,  QCursor
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QSettings
+from xdg.DesktopEntry import DesktopEntry
+
+from pprint import pprint
+from typing import Any, Dict, List, Set, Tuple, Optional
+
+#----------
+# Check autostart is enabled
+#----------
+if args.autostart:
+    start_at_login_enabled = QSettings(
+        "MX-Linux", "mx-updater").value(
+        "Settings/start_at_login", "true"
+        ).lower() in ("true", "on", "1"
+    )
+    if not start_at_login_enabled:
+        logger.info("MX UPDATER autostart is disabled, exiting")
+        sys.exit(1)    
+
+#----------
+# Constants
+#----------
+
+SETTINGS_OBJECT_NAME  = "org.mxlinux.UpdaterSettings"
+SETTINGS_OBJECT_PATH  = "/org/mxlinux/UpdaterSettings"
+SETTINGS_OBJECT_IFACE = "org.mxlinux.UpdaterSettings"
+
+TRAYICON_OBJECT_NAME  = "org.mxlinux.UpdaterSystemTrayIcon"
+TRAYICON_OBJECT_PATH  = "/org/mxlinux/UpdaterSystemTrayIcon"
+TRAYICON_OBJECT_IFACE = "org.mxlinux.UpdaterSystemTrayIcon"
+
+SYSTEM_SERVICE_NAME = "org.mxlinux.UpdaterSystemMonitor"
+SYSTEM_OBJECT_PATH  = "/org/mxlinux/UpdaterSystemMonitor"
+SYSTEM_INTERFACE    = "org.mxlinux.UpdaterSystemMonitor"
+
+UPDATER_ACTION_RUN = "/usr/libexec/mx-updater/updater_action_run"
+
+STATE_DIR  = Path("/var/lib/mx-updater-monitor")
+STATE_FILE = STATE_DIR / "state.json"
+
+
+class L10N():
+    """
+    Translation service for different locale domain
+    """
+
+    # Set up localization
+    LOCALE_DOMAIN_APT_NOTIFIER = 'mx-updater'
+    LOCALE_DOMAIN_APT = 'apt'
+    LOCALE_DIR = '/usr/share/locale'
+    
+    tn = gettext.translation(domain=LOCALE_DOMAIN_APT_NOTIFIER,
+                             localedir=LOCALE_DIR, fallback=True
+    )
+
+    ta = gettext.translation(domain=LOCALE_DOMAIN_APT,
+                             localedir=LOCALE_DIR, fallback=True
+    )
+    
+class SystemTrayService(dbus.service.Object):
+    """
+    D-Bus service that provides a simple interface to get and set a value.
+    """
+    
+    def __init__(self, bus_name, object_path):
+        super().__init__(bus_name, object_path)
+        self._value = ""
+        #self._settings = {}
+        self._settings_store = {}
+        #self._settings = QSettings("org.example", "myapp")
+        self._settings = QSettings("MX-Linux", "mx-updater")
+        # QObject wrapper for emitting Qt signals
+        class _Emitter(QObject):
+            value_changed_qt = pyqtSignal(str, str)
+        self._emitter = _Emitter()
+
+    # Expose the Qt signal for others to connect to
+    @property
+    def value_changed_qt(self):
+        return self._emitter.value_changed_qt
+
+    @dbus.service.method(TRAYICON_OBJECT_IFACE, in_signature='s', out_signature='s')
+    def GetValue(self, key):
+        # Read from QSettings; optional sync to pick up external changes
+        # self._settings.sync()   # uncomment if you expect external edits frequently
+        return self._settings.value(key, "", type=str)
+
+    @dbus.service.method(TRAYICON_OBJECT_IFACE, in_signature='ss', out_signature='')
+    def SetValue(self, key, value):
+        if not key.strip():
+            return
+        # write to qsettings
+        # self._settings.setValue(f"Settings/{key}", str(value))
+        # force immediate write to disk
+        # self._settings.sync()
+        # emit PyQt signal
+        self._emitter.value_changed_qt.emit(key, value)
+        # emit dbus signal for external clients
+        # self.ValueChanged(key, value)
+    
+    @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="ss")
+    def ValueChanged(self, key, value):
+        """Signal emitted when the value changes."""
+        pass
+
+    @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="sb")
+    def ActionStatusChanged(self, tag, enabled):
+        """
+        Dbus signal: 
+        interface: TRAYICON_OBJECT_IFACE
+        signal name: "ActionStatusChanged"
+        signature: string, boolean
+        """
+        pass
+
+    @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="sb")
+    def ActionEntryEnabled(self, entry_tag: str, enabled: bool): pass
+
+    @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="sb")
+    def ActionEntryVisible(self, entry_tag: str, visible: bool): pass
+    
+    @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="b")
+    def SystrayVisibilityChanged(self, visible: bool): pass
+
+    @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="")
+    def Quit(self): pass
+
+class SystemTrayIcon(QSystemTrayIcon):
+    # PyQt signals
+    basic_upgrades_changed_signal = pyqtSignal(object)
+    full_upgrades_changed_signal = pyqtSignal(object)
+    value_changed_signal = pyqtSignal(str, str)
+    action_status_changed_signal = pyqtSignal(str, bool)
+
+    entry_enabled_changed_signal = pyqtSignal(str, bool)
+    entry_visible_changed_signal = pyqtSignal(str, bool)
+    tray_visibility_changed_signal = pyqtSignal(bool)
+
+    quit_signal = pyqtSignal()
+    
+    def __init__(self, service, session_bus, system_bus):
+        super().__init__()
+        self.session_bus = session_bus
+        self.bus = session_bus
+        self.system_bus = system_bus
+        self.service = service
+
+        self._lock = threading.Lock()
+
+        # on startup, try to acquire a lock
+        self.run_time_path = acquire_runtime_lock()
+        if self.run_time_path is None:
+            logger.warning(
+                    "Could not acquire runtime lock. "
+                    "Some features may not work.")
+
+        
+        self.selected_settings = {}
+        self._settings = {}
+        # actions references to look up a QAction by tag_name
+        self.actions = {}
+
+        # Connect directly to the service's Qt signal (avoids DBus loopback)
+        self.service.value_changed_qt.connect(self.on_value_changed)
+
+        self.qsettings = QSettings("MX-Linux", "mx-updater")
+
+        # initialize state and settings
+        self._state = {
+            "upgrades-available": {
+                "full-upgrade": (0, 0, 0, 0),
+                "basic-upgrade": (0, 0, 0, 0),
+            }
+        }
+        self._old_state = self._state
+
+        #self._settings = {"full-old": (0, 0, 0, 0),"basic-old": (0, 0, 0, 0)}
+
+        self._first_state = True
+
+        self.get_defaults()
+        self.load_settings()
+
+        self._settings = self.selected_settings
+
+        hide_until_upgrades_available = self._settings.get("hide_until_upgrades_available", False)
+        self.setVisible(not hide_until_upgrades_available)
+
+        self._settings["upgrade_type"] =  self.qsettings.value("Settings/upgrade_type", "full-upgrade")
+        self._settings["icon_look"] =  self.qsettings.value("Settings/icon_look", "wireframe-dark")
+        self._settings["wireframe_transparent"] =  self.qsettings.value("Settings/wireframe_transparent", True)
+
+
+        # try load state 
+        with self._lock:
+            loaded_state = self.load_state()
+    
+            if (loaded_state is not None
+                and self.validate_state(loaded_state)
+                ):
+                self._state["upgrades-available"]["full-upgrade"] = loaded_state["upgrades-available"]["full-upgrade"]
+                self._state["upgrades-available"]["basic-upgrade"] = loaded_state["upgrades-available"]["basic-upgrade"]
+
+        # try update state with retrieved available upgrades via D-Bus
+        upgrades = self.get_upgrades_available()
+        logger.debug("D-Bus GetUpgradesAvailable: %s", upgrades)
+
+
+        #---------------------------------------------------------------
+        # notification stuff
+        self.notification = None
+        
+        # init notify2 and capabilities
+        self._notify_init = None
+        self._notify_caps = set()
+        try:
+            notify2.init(_("MX Updater"))
+            self._notify_init = True
+            self._notify_caps = notify2.get_server_caps() or set()       
+        except Exception as e:
+            logger.warning("Notification daemon not avialable: %r", e)
+        
+        if self._notify_init:
+            self._notify_caps = notify2.get_server_caps() or set()       
+            if "actions" not in self._notify_caps:
+                logger.warning("Notification with 'actions' not avialable!")
+        #---------------------------------------------------------------
+        
+        # Connections: PyQt signal to update_tray_icon method
+        self.full_upgrades_changed_signal.connect(self.update_apt_icon_full)
+        self.basic_upgrades_changed_signal.connect(self.update_apt_icon_basic)
+
+        # register to upgrades_changes signal on system bus
+        self.register_signal_receiver()
+
+        # request refresh 
+        self.request_refresh()
+        
+        # Connect the PyQt signal to the update_tray_icon method
+        self.value_changed_signal.connect(self.update_tray_icon)
+
+
+        # Subscribe to the D-bus signal (if you opted to emit one):
+        self.bus.add_signal_receiver(
+            handler_function=self._on_dbus_quit,
+            dbus_interface=TRAYICON_OBJECT_IFACE,
+            signal_name="Quit",
+            path=TRAYICON_OBJECT_PATH,
+        )
+
+        self.quit_signal.connect(self._onLocalQuit)
+
+        """
+        # Connect to the D-Bus signal using the service's bus name
+        self.session_bus.add_signal_receiver(
+            self.on_value_changed,
+            dbus_interface=TRAYICON_OBJECT_IFACE,
+            signal_name="ValueChanged"
+        )
+        # listen for external DBus signals
+        self.session_bus.add_signal_receiver(
+            self._on_external_dbus_value_changed,
+            dbus_interface=TRAYICON_OBJECT_IFACE,
+            signal_name="ValueChanged"
+        )
+        """
+
+        
+
+
+        self.bus.add_signal_receiver(self._on_dbus_entry_enabled,
+                                     dbus_interface=TRAYICON_OBJECT_IFACE,
+                                     signal_name="ActionEntryEnabled",
+                                     path=TRAYICON_OBJECT_PATH)
+
+        self.bus.add_signal_receiver(self._on_dbus_entry_visible,
+                                     dbus_interface=TRAYICON_OBJECT_IFACE,
+                                     signal_name="ActionEntryVisible",
+                                     path=TRAYICON_OBJECT_PATH)
+
+        self.bus.add_signal_receiver(self._on_dbus_tray_visible,
+                                     dbus_interface=TRAYICON_OBJECT_IFACE,
+                                     signal_name="SystrayVisibilityChanged",
+                                     path=TRAYICON_OBJECT_PATH)
+        
+
+        # connect Qt signals to systray icon
+        self.entry_enabled_changed_signal.connect(self._apply_entry_enabled)
+        self.entry_visible_changed_signal.connect(self._apply_entry_visible)
+        self.tray_visibility_changed_signal.connect(self._apply_tray_visibility)
+
+        # 3) Set up DBus listening: we expect a signal on the session bus
+        #    with the signature: signal ActionStatusChanged(string tag, bool enabled)
+        # Connect to the session D-Bus signal
+
+        # Connect the PyQt signal to the update_tray_icon method
+        self.action_status_changed_signal.connect(self.set_action_enabled)
+
+        # Connect to the D-Bus signal using the session bus
+        self.session_bus.add_signal_receiver(
+            self.on_action_status_changed,
+            dbus_interface=TRAYICON_OBJECT_IFACE,
+            signal_name='ActionStatusChanged'
+        )
+
+        self.initUI()
+
+    def on_value_changed(self, key, value):
+        # Called when SetValue writes QSettings and emits the Qt signal
+        self.value_changed_signal.emit(key, value)
+
+    def _on_external_dbus_value_changed(self, key, value):
+        # External DBus signal -> update QSettings (avoid overwriting if you trust local) and emit Qt signal
+        self.service._settings.setValue(key, str(value))
+        # self.service._settings.sync()
+        self.service.value_changed_qt.emit(key, value)
+
+    def get_upgrades_available(self):
+        """
+        Retrieve available upgrades via D-Bus.
+        
+        Returns:
+            dict: A dictionary of upgrade types and their corresponding upgrade information
+        """
+        try:
+            # connect to system bus
+            bus = self.system_bus 
+            
+            # create proxy
+            proxy = bus.get_object(
+                SYSTEM_SERVICE_NAME, 
+                SYSTEM_OBJECT_PATH
+            )
+            
+            # get interface
+            interface = dbus.Interface(proxy, SYSTEM_INTERFACE)
+            
+            # call method  to get upgrades available
+            upgrades = interface.GetUpgradesAvailable()
+            
+            # convert D-Bus result to native types
+            processed_upgrades = {
+                str(upgrade_type): tuple(int(value) for value in upgrade_info)
+                for upgrade_type, upgrade_info in upgrades.items()
+            }
+
+            # update state
+            self._state["upgrades-available"] = processed_upgrades
+            
+            # update settings with old values
+            #self._settings["full-old"] = processed_upgrades.get("full-upgrade", (0, 0, 0, 0))
+            #self._settings["basic-old"] = processed_upgrades.get("basic-upgrade", (0, 0, 0, 0))
+            
+            return processed_upgrades
+        
+        except dbus.exceptions.DBusException as service_error:
+            print(f"D-Bus service not available: {service_error}")
+            return self._state["upgrades-available"]
+        
+        except Exception as e:
+            print(f"Unexpected D-Bus error: {e}")
+            return self._state["upgrades-available"]
+            
+
+    def get_defaults(self):
+        self.defaults = {
+            'Settings' : {
+                'icon_look_default' : 'wireframe-dark',
+                'icon_look_allowed' : ('wireframe-dark', 'wireframe-light', 'classic', 'pulse', 'pulse-light'),
+                'wireframe_transparent_default' : True,
+                'wireframe_transparent' : True,
+                'left_click' : 'view_and_upgrade',
+
+                'left_click_allowed' : ('view_and_upgrade', 'ViewAndUpgrade',
+                                        'package_installer', 'packageinstaller','PackageInstaller',
+                                        'package_manager', 'packagemanager','PackageManager'
+                                        ),
+                'upgrade_assume_yes' : False,
+                'upgrade_type_default' : 'full-upgrade',
+                'upgrade_type_allowed' : ('dist-upgrade', 'full-upgrade', 'basic-upgrade', 'upgrade'),
+                'auto_close' : False,
+                'auto_close_timeout' : 10,
+                'use_dbus_notifications' : True,
+                'use_nala_default' : False,
+                'use_nala' : False,
+                'hide_until_upgrades_available' : False,
+                #'''
+                #IconLook=wireframe-dark
+                #LeftClick=ViewAndUpgrade
+                #UpgradeAssumeYes=false
+                #UpgradeAutoClose=false
+                #UpgradeType=dist-upgrade
+                #WireframeTransparent=false
+                #'''
+                },
+
+                'Icons' : {
+                'icon_order' : [
+                        'wireframe-dark',
+                        'wireframe-light',
+                        'classic',
+                        'pulse',
+                        'pulse-light',
+                        ],
+
+                'wireframe-dark' : {
+                    'label' : 'wireframe dark',
+                    'icon_some' : '/usr/share/icons/mnotify-some-wireframe.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-wireframe-dark.png',
+                    'icon_none_transparent' : '/usr/share/icons/mnotify-none-wireframe-dark-transparent.png',
+                    },
+
+                'wireframe-light' : {
+                    'label' : 'wireframe light',
+                    'icon_some' : '/usr/share/icons/mnotify-some-wireframe.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-wireframe-light.png',
+                    'icon_none_transparent' : '/usr/share/icons/mnotify-none-wireframe-light-transparent.png',
+                    },
+
+                'classic' : {
+                    'label' : 'classic',
+                    'icon_some' : '/usr/share/icons/mnotify-some-classic.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-classic.png',
+                    },
+                'pulse' : {
+                    'label' : 'pulse',
+                    'icon_some' : '/usr/share/icons/mnotify-some-pulse.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-pulse.png',
+                    },
+                'pulse-light' : {
+                    'label' : 'pulse light',
+                    'icon_some' : '/usr/share/icons/mnotify-pulse-green.png',
+                    'icon_none' : '/usr/share/icons/mnotify-pulse-white.png',
+                    },
+                },
+            }
+
+
+        
+        self.defaultsXXX = {
+            'Settings' : {
+                'icon_look_default' : 'wireframe-dark',
+                'icon_look_allowed' : ('wireframe-dark', 'wireframe-light', 'classic', 'pulse', 'pulse-light'),
+                'wireframe_transparent_default' : 'true',
+                'wireframe_transparent' : 'true',
+                'left_click' : 'view_and_upgrade',
+                'left_click_allowed' : ('view_and_upgrade','package_manager','packagemanager', 'ViewAndUpgrade','PackageManager'),
+                'upgrade_assume_yes' : "false",
+                'upgrade_type_default' : 'full-upgrade',
+                'upgrade_type_allowed' : ('dist-upgrade', 'full-upgrade', 'basic-upgrade', 'upgrade'),
+                'auto_close' : 'false',
+                'auto_close_timeout' : 10,
+                'use_nala_default' : 'false',
+                'use_nala' : 'false',
+                #'''
+                #IconLook=wireframe-dark
+                #LeftClick=ViewAndUpgrade
+                #UpgradeAssumeYes=false
+                #UpgradeAutoClose=false
+                #UpgradeType=dist-upgrade
+                #WireframeTransparent=false
+                #'''
+                },
+
+                'Icons' : {
+                'icon_order' : [
+                        'wireframe-dark',
+                        'wireframe-light',
+                        'classic',
+                        'pulse',
+                        'pulse-light',
+                        ],
+
+                'wireframe-dark' : {
+                    'label' : 'wireframe dark',
+                    'icon_some' : '/usr/share/icons/mnotify-some-wireframe.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-wireframe-dark.png',
+                    },
+
+                'wireframe-light' : {
+                    'label' : 'wireframe light',
+                    'icon_some' : '/usr/share/icons/mnotify-some-wireframe.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-wireframe-light.png',
+                    },
+
+                'classic' : {
+                    'label' : 'classic',
+                    'icon_some' : '/usr/share/icons/mnotify-some-classic.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-classic.png',
+                    },
+                'pulse' : {
+                    'label' : 'pulse',
+                    'icon_some' : '/usr/share/icons/mnotify-some-pulse.png',
+                    'icon_none' : '/usr/share/icons/mnotify-none-pulse.png',
+                    },
+                'pulse-light' : {
+                    'label' : 'pulse light',
+                    'icon_some' : '/usr/share/icons/mnotify-pulse-green.png',
+                    'icon_none' : '/usr/share/icons/mnotify-pulse-white.png',
+                    },
+                },
+            }
+
+
+
+    def load_settings(self):
+
+        #--- upgrade_type --------------------------------------------
+        upgrade_type_default = self.defaults.get('Settings',{}).get("upgrade_type_default")
+        print(f"load_settings upgrade_type = {upgrade_type_default}")
+        upgrade_type = self.qsettings.value("Settings/upgrade_type", upgrade_type_default)
+        if upgrade_type not in self.defaults.get('Settings',{}).get("upgrade_type_allowed"):
+            upgrade_type = "full-upgrade"
+        ##  print(f"Loaded preference UpgradeType: {upgrade_type}")  # Debug output
+        self.selected_settings["upgrade_type"] = upgrade_type
+
+        #--------------------------------------------------------------
+        #--- use_nala -------------------------------------------------
+        use_nala_default = self.defaults.get('Settings',{}).get("use_nala_default")
+        print(f"load_settings use_nala_default = {use_nala_default}")
+        try:
+            use_nala = self.qsettings.value("Settings/use_nala", use_nala_default, type=bool)
+            print(f"loaded Qsettings use_nala = {use_nala}")
+        except:
+            use_nala = False
+        self.selected_settings["use_nala"] = use_nala
+
+        #--------------------------------------------------------------
+        #--- left_click ------------------------------------
+        left_click_default = self.defaults.get('Settings',{}).get("left_click")
+        try:
+            left_click = self.qsettings.value("Settings/left_click", left_click_default)
+        except:
+            left_click = left_click_default
+        ##  print(f"Loaded preference LeftClick: {left_click}")  # debug
+
+        # check it is in the allowed values
+        if left_click not in self.defaults.get('Settings',{}).get("left_click_allowed"):
+            print(f"Invalid left_click '{left_click}' found. Reverting to default '{left_click_default}'.")
+            left_click = left_click_default
+        #print(f"Set selected  settings left_click: {left_click}")
+
+        if left_click.lower().replace('-', '_') in ( 'view_and_upgrade', 'viewandupgrade'):
+            left_click = 'view_and_upgrade'
+        elif left_click.lower().replace('-', '_') in ('package_manager','packagemanager'):
+            left_click = 'package_manager'
+        else:
+            left_click = 'view_and_upgrade'
+
+        self.selected_settings["left_click"] = left_click
+        self._settings["left_click"] = left_click
+
+
+        #--------------------------------------------------------------
+        #--- icon_look ------------------------------------------------
+        icon_look_default = self.defaults.get('Settings',{}).get("icon_look_default")
+        icon_look = self.qsettings.value("Settings/icon_look", icon_look_default)
+        ##  print(f"Loaded settings IconLook: {icon_look}")  # Debug output
+        # Check if the value is in the allowed values
+        if icon_look not in self.defaults.get('Settings',{}).get("icon_look_allowed"):
+            #print(f"Invalid icon_look '{icon_look}' found. Reverting to default '{icon_look_default}'.")
+            icon_look = icon_look_default
+        #print(f"Set selected  settings IconLook: {icon_look}")  # Debug output
+        self.selected_settings["icon_look"] = icon_look
+
+        #--------------------------------------------------------------
+        #--- wireframe_transparent ------------------------------------
+        wireframe_transparent = self.defaults.get('Settings',{}).get("wireframe_transparent")
+        ##  print(f"Loaded preference WireframeTransparent: {wireframe_transparent}")  # Debug output
+        try:
+            wireframe_transparent = self.qsettings.value("Settings/wireframe_transparent", wireframe_transparent, type=bool)
+            #print(f"loaded Qsettings wireframe_transparent = {wireframe_transparent}")
+        except:
+            wireframe_transparent = True
+        #print(f"Set selected  settings wireframe_transparent: {wireframe_transparent}")  # Debug output
+        self.selected_settings["wireframe_transparent"] = wireframe_transparent
+
+        #--------------------------------------------------------------
+        #--- upgrade_assume_yes ---------------------------------------
+        upgrade_assume_yes_default = self.defaults.get('Settings',{}).get("upgrade_assume_yes")
+        #print("#--------------------------------------------------------------")
+        ##  print(f"Loaded preference upgrade_assume_yes_default: {upgrade_assume_yes_default}")  # Debug output
+        try:
+            upgrade_assume_yes = self.qsettings.value("Settings/upgrade_assume_yes", upgrade_assume_yes_default)
+            ##  print(f"Loaded Qsettings upgrade_assume_yes: {upgrade_assume_yes}")  # Debug
+        except:
+            upgrade_assume_yes = upgrade_assume_yes_default
+            print(f"Qsettings upgrade_assume_yes: {upgrade_assume_yes}")  # Debug
+
+        ##  print(f"Loaded preference upgrade_assume_yes: {upgrade_assume_yes}")  # Debug output
+
+        if isinstance(upgrade_assume_yes, str) and upgrade_assume_yes.lower() in ("true", "yes", "1"):
+            upgrade_assume_yes = True
+        else:
+            upgrade_assume_yes = False
+
+        self.selected_settings["upgrade_assume_yes"] = upgrade_assume_yes
+
+        #--- auto_close ----------------------------------------
+        auto_close_default = self.defaults.get('Settings',{}).get("auto_close")
+        if auto_close_default is None:
+            auto_close_default = False
+
+        try:
+            auto_close = self.qsettings.value("Settings/auto_close", auto_close_default, type=bool)
+            ##  print(f"Loaded Qsettings auto_close: {auto_close}")  # Debug
+        except:
+            auto_close = auto_close_default
+            print(f"Fallback Qsettings auto_close: {auto_close}")  # Debug
+
+        ##  print(f"Loaded preference auto_close: {auto_close}")  # Debug output
+
+        self.selected_settings["auto_close"] = auto_close
+
+        #--- auto_close timeout---------------------------------
+        auto_close_timeout_default = self.defaults.get('Settings',{}).get("auto_close_timeout")
+        if auto_close_timeout_default is None:
+            auto_close_timeout_default = 10
+        try:
+            auto_close_timeout = self.qsettings.value("Settings/auto_close_timeout", auto_close_timeout_default, type=int)
+            ##  print(f"Loaded Qsettings auto_close_timeout: {auto_close_timeout}")  # Debug
+        except:
+            auto_close_timeout = auto_close_timeout_default
+            print(f"Fallback Qsettings auto_close_timeout: {auto_close_timeout}")  # Debug
+
+        ##  print(f"Loaded preference auto_close_timeout: {auto_close_timeout}")  # Debug output
+
+        # check auto_close_timeout is within valid range 1..60 
+        if auto_close_timeout < 1 or auto_close_timeout > 60 :
+            auto_close_timeout = auto_close_timeout_default
+
+        self.selected_settings["auto_close_timeout"] = auto_close_timeout
+
+        #--- use_dbus_notifications -----------------------------------
+        use_dbus_notifications_default = self.defaults.get('Settings',{}).get("use_dbus_notifications")
+        if use_dbus_notifications_default is None:
+            use_dbus_notifications_default = True
+
+        try:
+            use_dbus_notifications = self.qsettings.value("Settings/use_dbus_notifications", use_dbus_notifications_default, type=bool)
+            ##  print(f"Loaded Qsettings use_dbus_notifications: {use_dbus_notifications}")  # Debug
+        except:
+            use_dbus_notifications = use_dbus_notifications_default
+            print(f"Fallback Qsettings use_dbus_notifications: {use_dbus_notifications}")  # Debug
+
+        ##  print(f"Loaded preference use_dbus_notifications: {use_dbus_notifications}")  # Debug output
+
+
+        self.selected_settings["use_dbus_notifications"] = use_dbus_notifications
+
+        #--- hide_until_upgrades_available -----------------------------------
+        hide_until_upgrades_available_default = self.defaults.get('Settings',{}).get("hide_until_upgrades_available")
+        if hide_until_upgrades_available_default is None:
+            hide_until_upgrades_available_default = False
+
+        try:
+            hide_until_upgrades_available = self.qsettings.value("Settings/hide_until_upgrades_available", hide_until_upgrades_available_default, type=bool)
+            ##  print(f"Loaded Qsettings hide_until_upgrades_available: {hide_until_upgrades_available}")  # Debug
+        except:
+            hide_until_upgrades_available = hide_until_upgrades_available_default
+            print(f"Fallback Qsettings hide_until_upgrades_available: {hide_until_upgrades_available}")  # Debug
+
+        ##  print(f"Loaded preference hide_until_upgrades_available: {hide_until_upgrades_available}")  # Debug output
+
+
+        self.selected_settings["hide_until_upgrades_available"] = hide_until_upgrades_available
+
+
+    def _on_dbus_quit(self):
+        # Re-emit as a Qt signal
+        self.quit_signal.emit()
+
+
+    def set_action_enabled(self, tag: str, enabled: bool):
+        """
+        Helper to enable/disable a QAction by tag_name.
+        """
+        act = self.actions.get(tag)
+        if not act:
+            return
+        act.setDisabled(not enabled)
+
+    def _apply_entry_enabled(self, tag: str, enabled: bool):
+        action = self.actions.get(tag)
+        if action:
+            action.setEnabled(enabled)
+
+    def set_action_visble(self, tag: str, visible: bool):
+        self._apply_entry_visible(tag, visible)
+        
+    def _apply_entry_visible(self, tag: str, visible: bool):
+        action = self.actions.get(tag)
+        if action:
+            action.setVisible(visible)
+
+    def _apply_tray_visibility(self, visible: bool):
+        self.setVisible(visible)
+
+    # DBus callbacks to re-emit Qt signals
+    def _on_dbus_entry_enabled(self, tag: str, enabled: bool):
+        logger.debug("DBus: [_on_dbus_entry_enabled] %s -> %s", f"{tag=}", 'enable' if enabled else 'disable')
+        self.entry_enabled_changed_signal.emit(tag, enabled)
+
+    def _on_dbus_entry_visible(self, tag: str, visible: bool):
+        logger.debug("DBus: [_on_dbus_entry_visible] %s -> %s", f"{tag=}", 'visible' if visible else 'hidden')
+        self.entry_visible_changed_signal.emit(tag, visible)
+
+    def _on_dbus_tray_visible(self, visible: bool):
+        logger.debug("DBus: [_on_dbus_tray_visible] systrayicon -> %s", 'visible' if visible else 'hidden')
+        self.tray_visibility_changed_signal.emit(visible)
+
+    def _notify_with_action(self, title: str, message: str, action_tag: str):
+        """
+        Create a notify2 notification with an action button.
+        Clicking it calls the launcher for the given action_tag.
+        """
+
+        if not self._notify_init:
+            return
+
+        if "actions" not in self._notify_caps:
+            return
+
+        # label from registry
+        #label, enabled, exe = self.registry[action_tag]
+        label = _("View and Upgrade")
+
+        # create notification
+        #n = notify2.Notification(title, message, "mx-updater")
+        #n = notify2.Notification(title, message, "apt-notifier")
+        #n = notify2.Notification(title, message, "/usr/share/icons/mx-updater.png")
+        n = notify2.Notification(title, message, "/usr/share/icons/hicolor/scalable/mx-updater.svg")
+        n.set_urgency(notify2.URGENCY_NORMAL)
+        n.set_timeout(10000)  # 10 seconds
+
+        # action callback if avialable
+        if "actions" in self._notify_caps:
+            def on_notify_action(n_obj, action_key):
+                # action_key will be equal to action_tag by our choice below
+                launcher = self.make_launcher(action_key)
+                launcher()  # run the subprocess
+                # optionally close the notification right away
+                n_obj.close()
+    
+            # notify2 requires you pass an “action key” string, a label, and a callback
+            n.add_action(
+                action_tag,      # action_key
+                label,           # button text
+                on_notify_action # callback
+            )
+    
+        n.show()
+
+        if not self.notification:
+            self.notification = n
+
+    def on_entry_enabled(self, tag: str, enable: bool):
+        action = self.actions[tag]
+        action.setEnabled(enable)
+    
+    def on_menu_visibility_changed(self, visible: bool):
+        self.tray_menu.setVisible(visible)
+    
+    def on_systray_visibility_changed(self, visible: bool):
+        if visible:
+            self.tray_icon.show()
+        else:
+            self.tray_icon.hide()
+    
+
+
+    def on_action_status_changed(self, tag: str, enabled: bool):
+        """
+        Slot called when your run-me-with-lock script (or the real
+        executable) emits a DBus signal telling us to re-enable
+        or disable this menu item.
+        """
+        print(f"DBus: {tag=} -> {'enable' if enabled else 'disable'}")
+        self.action_status_changed_signal.emit(tag, enabled)
+
+    def register_signal_receiver(self):
+        
+        try:
+            # Connect to the system D-Bus signal
+            self.system_bus.add_signal_receiver(
+                self.on_full_upgrades_changed,
+                signal_name='FullUpgradesChanged',
+                bus_name=SYSTEM_SERVICE_NAME,
+                path=SYSTEM_OBJECT_PATH,
+                dbus_interface=SYSTEM_INTERFACE
+            )
+        except dbus.exceptions.DBusException as e:
+            logger.debug(f"Error: {e}")
+            logging.debug("ERROR: %r", e)
+
+
+        try:
+            # Connect to the system D-Bus signal
+            self.system_bus.add_signal_receiver(
+                self.on_basic_upgrades_changed,
+                signal_name='BasicUpgradesChanged',
+                bus_name=SYSTEM_SERVICE_NAME,
+                path=SYSTEM_OBJECT_PATH,
+                dbus_interface=SYSTEM_INTERFACE
+            )
+        except dbus.exceptions.DBusException as e:
+            logger.debug(f"Error: {e}")
+            logging.debug("ERROR: %r", e)
+
+
+    def request_refresh(self):
+
+        try:
+            proxy = self.system_bus.get_object(SYSTEM_SERVICE_NAME,
+                                   SYSTEM_OBJECT_PATH)
+    
+            iface = dbus.Interface(proxy, dbus_interface=SYSTEM_INTERFACE )
+    
+            iface.Refresh()
+    
+        except dbus.exceptions.DBusException as e:
+            logger.debug(f"Error: {e}")
+            logging.debug("ERROR: %r", e)
+
+
+
+    def quit(self):
+        QApplication.quit()
+    
+    def on_basic_upgrades_changed(self, basic_upgrades_available):
+        """Slot to handle the D-Bus signal and emit the PyQt signal."""
+        logger.debug("D-Bus basic_upgrades_changed_signal received with value: %r", basic_upgrades_available)
+        self.basic_upgrades_changed_signal.emit(basic_upgrades_available)  # Emit the PyQt signal
+
+    def on_full_upgrades_changed(self, full_upgrades_available):
+        """Slot to handle the D-Bus signal and emit the PyQt signal."""
+        #print(f"D-Bus full_upgrades_changed_signal received with value: {full_upgrades_available}")
+        logger.debug("D-Bus full_upgrades_changed_signal received with value: %r", full_upgrades_available)
+        self.full_upgrades_changed_signal.emit(full_upgrades_available)  # Emit the PyQt signal
+
+    def update_apt_icon_full(self, full_upgrades_available):
+        upgrade_type = self._settings.get("upgrade_type", "full-upgrade")
+
+        if 'full' not in upgrade_type:
+            return
+
+        self.update_apt_icon("full-upgrade", full_upgrades_available)
+
+
+    def update_apt_icon_basic(self, basic_upgrades_available):
+
+        upgrade_type = self._settings.get("upgrade_type", "full-upgrade")
+        if 'basic' not in upgrade_type:
+            return
+
+        self.update_apt_icon("basic-upgrade", basic_upgrades_available)
+
+
+    def cat_file(self, file_path: str) -> str:
+        try:
+            # subprocess to call 'cat'
+            result = subprocess.run(['cat', file_path], capture_output=True, text=True, check=True)
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            print(f"Error reading file: {e}")
+            return ""
+        except FileNotFoundError:
+            print("File not found.")
+            return ""
+    
+
+   
+    def update_apt_icon(self, upgrade_type, upgrades_available):
+
+        logger.debug("[update_apt_icon] System tray icon updated '%s' with D-Bus value: %s", upgrade_type, upgrades_available)
+
+        self._old_state = self._state
+
+        state_file_conentent = self.cat_file(str(STATE_FILE))
+        logger.debug("[update_apt_icon] cat STATE_FILE %s:\n%s", STATE_FILE, state_file_conentent)
+        
+        # try load state 
+        with self._lock:
+            loaded_state = self.load_state()
+            logger.debug("[update_apt_icon] loaded_state STATE_FILE %s:\n%s", STATE_FILE, loaded_state)
+    
+            if loaded_state is not None and self.validate_state(loaded_state):
+                self._state["upgrades-available"]["full-upgrade"] = loaded_state["upgrades-available"]["full-upgrade"]
+                self._state["upgrades-available"]["basic-upgrade"] = loaded_state["upgrades-available"]["basic-upgrade"]
+
+                if upgrade_type == "full-upgrade":
+                    upgrades_available = loaded_state.get("upgrades-available",{}).get("full-upgrade", (0,0,0,0))
+                else:
+                    upgrades_available = loaded_state.get("upgrades-available",{}).get("basic-upgrade", (0,0,0,0))
+
+            else:
+                self._state["upgrades-available"][upgrade_type] = upgrades_available
+
+        logger.debug("[update_apt_icon] set_tooltip with _state:\n%s", self._state)
+        self.set_tooltip()
+        self.set_icon_look()
+
+    
+ 
+    def set_tooltip(self):
+
+        upgrade_type  = self._settings.get("upgrade_type", "full-upgrade")
+        logger.debug("[set_tooltip] set tooltip for '%s' with _state:\n%s", upgrade_type, self._state)
+
+        new_upgrades_available = self._state.get("upgrades-available",{}).get(upgrade_type,(0, 0, 0, 0))
+        old_upgrades_available = self._old_state.get("upgrades-available",{}).get(upgrade_type,(0, 0, 0, 0))
+
+        upgraded, newly_installed, to_remove, not_upgraded = new_upgrades_available
+        logger.debug("[set_tooltip] set tooltip for '%s' with upgrades_available: %s", upgrade_type, new_upgrades_available)
+
+        if 'full' in upgrade_type or 'dist' in upgrade_type:
+            upgrade_type = 'full-ugrade'
+        else:
+            upgrade_type = 'basic-ugrade'
+        
+        
+        if (upgraded, newly_installed) == (0, 0):
+            tooltip = _("No updates available")
+            self._clean_notifications()
+            self.setToolTip(tooltip)
+            self._apply_entry_visible("view_and_upgrade", False)
+            self._apply_entry_visible("hide_until_updates_available", True)
+            logger.debug("Tooltip : %s", tooltip)
+            return
+            
+            
+        total_updates = upgraded + newly_installed
+
+        # use plural form
+        total_available = ngettext(
+                            "{num} new update available",
+                            "{num} new updates available",
+                            total_updates
+                            ).format(num=total_updates)
+        
+        upgraded_and_new = _a("%lu upgraded, %lu newly installed, ")\
+                            .replace("%lu", "{up:d}", 1)\
+                            .replace("%lu", "{ni:d}", 1)\
+                            .format(up=upgraded, ni=newly_installed)
+    
+        to_remove_not_upgraded = _a("%lu to remove and %lu not upgraded.\n").strip()\
+                            .replace("%lu", "{rm:d}", 1)\
+                            .replace("%lu", "{nu:d}", 1)\
+                            .format(rm=to_remove, nu=not_upgraded)
+
+
+        if upgrade_type == 'full-ugrade':
+            tooltip_upgrade_type = _("full upgrade")
+        else:
+            tooltip_upgrade_type = _("basic upgrade")
+        
+        tooltip= f"{tooltip_upgrade_type}\n{total_available}\n{upgraded_and_new}\n{to_remove_not_upgraded}"
+        logger.debug("Tooltip : %s", tooltip)
+        self.setToolTip(tooltip)
+ 
+        use_dbus_notifications = self._settings.get('use_dbus_notifications', True)
+
+        if use_dbus_notifications:
+            #self._first_state = False
+            if new_upgrades_available != old_upgrades_available or self._first_state:
+                self._clean_notifications()
+                self._notify_with_action(_("Upgrades available"), tooltip, "view_and_upgrade")
+        self._first_state = False
+
+    def update_tray_iconXXX(self, key, value):
+        # Update the tray icon based on the new key,value pair
+        print(f"Tray icon updated with key=value: {key}={value}")
+        if key == 'upgrade_type':
+            if value == 'full-upgrade':
+                self._settings['upgrade_type'] = 'full-upgrade'
+                tooltip = self._settings.get('tooltip_full-ugrade')
+                if tooltip:
+                    self._clean_notifications()
+                    self.setToolTip(tooltip)
+            else:
+                self._settings['upgrade_type'] = 'basic-upgrade'
+                tooltip = self._settings.get('tooltip_basic-ugrade')
+                if tooltip:
+                    self._clean_notifications()
+                    self.setToolTip(tooltip)
+
+
+        elif key == 'icon_look':
+            if value.startswith("wireframe"):
+                icon_look, _, transparent = value.partition(':')
+                self._settings['wireframe_transparent'] = transparent == "transparent" 
+                self._settings['icon_look'] = icon_look
+            self.set_icon_look()
+                        
+        #self.setToolTip(f"{value}")
+        #self.showMessage("TraIcon Notification", f"{value}", QSystemTrayIcon.MessageIcon.Information)
+
+
+    def update_tray_icon(self, key, value):
+        # update tray icon based key,value pair
+        logger.debug("Tray icon updated with key=value: %s=%s", key, value)
+        match key:
+            case 'upgrade_type':
+                upgrade_type = 'full-upgrade' if value == 'full-upgrade' else 'basic-upgrade'
+                self._settings['upgrade_type'] = upgrade_type
+                self.set_tooltip()
+        
+            case 'icon_look':
+                icon_look = value
+                if value.startswith("wireframe"):
+                    icon_look, _, transparent = value.partition(':')
+                    self._settings['wireframe_transparent'] = transparent == "transparent" 
+
+                self._settings['icon_look'] = icon_look
+                # TODO: needs update_apt_icon
+                self.set_icon_look()
+            
+            case 'left_click':
+                if value.startswith("view_and_upgrade"):
+                    self._settings['left_click'] = "view_and_upgrade"
+                elif value.startswith("package_manager"):
+                    self._settings['left_click'] = "package_manager"
+                elif value.startswith("package_installer"):
+                    self._settings['left_click'] = "package_installer"
+
+            case 'hide_until_upgrades_available':
+                if isinstance(value, bool):
+                    hide_until_upgrades_available = value
+                elif isinstance(value, str):
+                    hide_until_upgrades_available = value.lower() in ("true", "yes", "1")
+                
+                self._settings['hide_until_upgrades_available'] = value.lower() in ("true", "yes", "1")
+                self.set_icon_look()
+                #self._apply_tray_visibility(not hide_until_upgrades_available)
+                pass
+
+            case _:
+                # default handling if any 
+                pass
+
+    """
+    
+            self._state = {
+                "upgrades-available": {
+                    "full-upgrade": (0, 0, 0, 0),
+                    "basic-upgrade": (0, 0, 0, 0),
+                }
+            }
+    
+            upgraded, newly_installed, to_remove, not_upgraded = upgrades_available
+    
+    """
+    
+    def set_icon_look(self):
+
+        icon_look  = self._settings.get("icon_look")
+        upgrade_type  = self._settings.get("upgrade_type", "full-upgrade")
+
+        # print("self.defaults:")
+        # pprint(self.defaults)
+        # pprint(self.defaults)
+        # print("self._settings:")
+        # pprint(self._settings)
+        # pprint(self._settings)
+        # print(f"set_icon_look: icon_look  = {icon_look}")
+        icon_look_allowed = self.defaults.get("Settings",{}).get("icon_look_allowed")
+        # sanity check
+        if not icon_look or icon_look not in icon_look_allowed:
+            icon_look = self.defaults.get("Settings",{}).get("icon_look_default")
+            self._settings["icon_look"] = icon_look
+        
+        # print(f"set_icon_look: icon_look  = {icon_look}")
+        icons = self.defaults.get('Icons',{}).get(icon_look)
+        # print("icons:")
+        # pprint(icons)
+        # pprint(icons)
+        
+        icon_some = icons.get("icon_some")
+        icon_none = icons.get("icon_none")
+        #'icon_none_transparent'
+        # print("icons")
+        # pprint(icons)
+        # pprint(icons)
+
+        upgraded, newly_installed, _, _ = self._state.get("upgrades-available",{}).get(upgrade_type,(0, 0, 0, 0))
+        
+        if (upgraded, newly_installed) != (0, 0):
+            logger.debug(f"set_icon_look:'{icon_some}'")
+            self.setIcon(QIcon(icon_some))
+            self._apply_tray_visibility(True)
+        else:
+            logger.debug(f"set_icon_look:'{icon_none}'")
+            if icon_look.startswith('wireframe') and self._settings.get('wireframe_transparent'):
+                icon_none = icons.get('icon_none_transparent')
+
+            logger.debug(f"set_icon_look:'{icon_none}'")
+            self.setIcon(QIcon(icon_none))
+            hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
+            self._apply_tray_visibility(not hide_until_upgrades_available)
+    
+    def initUI(self):
+
+        #self.setIcon(QSystemTrayIcon.Icon(":/icon.png"))
+        #self.setIcon(QIcon("/usr/share/icons/mx-updater.png"))
+        #self.setIcon(QIcon("/usr/share/icons/mx-updater.png"))
+        #self.setIcon(QIcon("/usr/share/icons/mnotify-none-wireframe-dark-transparent.png"))
+
+        #self.set_icon_look()
+        upgrade_type = self._settings.get("upgrade_type", "full-upgrade")
+
+        upgrades_available = self._state.get("upgrades-available", {}).get(upgrade_type, (0, 0, 0, 0))
+
+        self.update_apt_icon(upgrade_type, upgrades_available)
+        
+
+        # context menu
+        self.menu = QMenu()
+        self.tray_menu = self.menu
+
+        synapic_label = self.get_app_name_from_path(
+            "/usr/share/applications/synaptic.desktop"
+            ) or _("Synaptic")
+        logger.debug(f"Synaptic:'{synapic_label}'")
+
+        packageinstaller_label = self.get_app_name_from_path(
+            "/usr/share/applications/mx-packageinstaller.desktop"
+            ) or _("MX Package Installer")
+        logger.debug(f"MXPI:'{packageinstaller_label}'") 
+
+        repo_manager_label = self.get_app_name_from_path(
+            "/usr/share/applications/mx-repo-manager.desktop"
+            ) or _("MX Repo Manager")
+            
+        logger.debug(f"REPO:'{repo_manager_label}'")
+
+        self.menu_items = [
+            # (tag, label, state, exe)
+            ("view_and_upgrade",      _("View and Upgrade"),       True,  "/usr/bin/my-upgrade"),
+            ("synaptic",              synapic_label,     True,  "/usr/bin/synaptic"),
+            ("packageinstaller",     packageinstaller_label,      True,  "/usr/bin/mx-packageinstaller"),
+            #("synaptic",             _("Upgrade using Synaptic"),     True,  "/usr/bin/synaptic"),
+            ("apt_history",          _("History"),                 True,  "/usr/bin/my-hist"),
+            ("auto_update_log",      _("Auto-update log(s)"),      True,  "/usr/lib/mx-updater/bin/view_unattended_upgrades_logs.py"),
+            ("auto_update_dpkg_log", _("Auto-update dpkg log(s)"), True,  "/usr/lib/mx-updater/bin/view_unattended_upgrades_dpkg_logs.py"),
+            ("updater_reload",       _("Check for Updates"),       True,  "/usr/bin/my-check-up"),
+            ("repo_manager",         repo_manager_label,            True,  "/usr/bin/my-repo"),
+            ("settings_editor",      _("Preferences"),             True,  "/usr/bin/mx-updater-preferences"),
+            ("updater_about",        _("About"),                   True,  "/usr/libexec/mx-updater/updater_about.py"),
+            ("updater_restart",      _("Restart"),                   True,  "/usr/bin/mx-updater"),
+
+        ]
+
+        # build a dict to quick lookup by tag:
+        """
+        self.registry = {
+            tag: (label, enabled, exe)
+            for tag, label, enabled, exe in self.menu_items
+            if isinstance(tag, str) and tag != "SEPARATOR"
+        }
+        """
+        self.registry = {}
+        for item in self.menu_items:
+            if isinstance(item, tuple) and len(item) == 4:
+                tag, label, enabled, exe = item
+                self.registry[tag] = (label, enabled, exe)
+        
+        
+        # tag                   executable
+        # ---------------------------------------------------------------------
+        # synaptic              /usr/sbin/synaptic
+        # packageinstaller      /usr/bin/mx-packageinstaller
+        # repo_manager          /usr/bin/mx-repo-manager
+        # updater_reload        /usr/lib/mx-updater/bin/updater_reload_run
+        # view_and_upgrade      /usr/lib/mx-updater/bin/view_and_upgrade
+        # apt_history           /usr/lib/mx-updater/bin/apt_history.py
+        # ---------------------------------------------------------------------
+       
+
+        
+        for item in self.menu_items:
+            if isinstance(item, tuple) and len(item) == 4:
+                tag, label, state, exe = item
+                act = QAction(label, self.menu)
+                if state is False:
+                    act.setDisabled(True)
+                elif state is None:
+                    act.setVisible(False)
+                # connect the click to the launcher
+                act.triggered.connect(self.make_launcher(tag))
+                self.menu.addAction(act)
+                self.actions[tag] = act
+            elif item == "SEPARATOR":
+                self.menu.addSeparator()
+
+
+        # Check and set visibility for synaptic
+        synaptic_is_available = (os.path.isfile('/usr/bin/synaptic-pkexec')
+                                and os.access('/usr/bin/synaptic-pkexec', os.X_OK))
+        
+        synaptic_is_available = (os.path.isfile('/usr/bin/synaptic-pkexec')
+                                and os.access('/usr/bin/synaptic-pkexec', os.X_OK)
+                                and bool(self.actions["synaptic"]))
+        self.set_action_visble("synaptic", synaptic_is_available)
+
+        # Check and set visibility for packageinstaller
+        mxpi_is_available = (os.path.isfile('/usr/bin/mx-packageinstaller')
+                            and os.access('/usr/bin/mx-packageinstaller', os.X_OK)
+                            and bool(self.actions["packageinstaller"]))
+        self.set_action_visble("packageinstaller", mxpi_is_available)
+
+        # self.actions["middle_click"] = self.actions["synaptic"] 
+        # set "middle_click"
+        
+        if mxpi_is_available:
+            self.actions["middle_click"] = self.actions["packageinstaller"]
+        elif synaptic_is_available:
+            self.actions["middle_click"] = self.actions["synaptic"]
+        
+        # Check and set visibility for unattended-upgrades log
+        unattended_log_exists = self.files_exist("/var/log/unattended-upgrades", "unattended-upgrades.log*")
+        self.set_action_visble("auto_update_log", unattended_log_exists)
+        
+        # Check and set visibility for unattended-upgrades DPKG log
+        dpkg_log_exists = self.files_exist("/var/log/unattended-upgrades", "unattended-upgrades-dpkg.log*")
+        self.set_action_visble("auto_update_dpkg_log", dpkg_log_exists)
+
+        
+        # build context menu entries
+        hide_until_updates_available = QAction(self.menu)
+        hide_until_updates_available.setText(_("Hide until updates available"))
+        hide_until_updates_available.triggered.connect(self._on_hide_until_upgrades_available)
+        hide_until_updates_available.setVisible(False)
+        self.menu.addAction(hide_until_updates_available)
+        self.actions["hide_until_updates_available"] = hide_until_updates_available
+
+        # context menu entries
+        quit_action = QAction(self.menu)
+        quit_action.setText(_("Quit"))
+        #quit_action.triggered.connect(self.service.Quit)
+        quit_action.triggered.connect(self._onLocalQuit)
+        self.menu.addAction(quit_action)
+
+        self.setContextMenu(self.menu)
+
+        self.activated.connect(self.tray_icon_activated)
+
+
+    #---------------------------------------------------------------
+    # update UpdaterSettings dialog if running
+    """
+    SETTINGS_OBJECT_NAME  = "org.mxlinux.UpdaterSettings"
+    SETTINGS_OBJECT_PATH  = "/org/mxlinux/UpdaterSettings"
+    SETTINGS_OBJECT_IFACE = "org.mxlinux.UpdaterSettings"
+    was update_systray_icon
+    """
+    
+    def update_settings_dialog(self, key, value):
+        prefix = 'no-dbus-callback@'
+    
+        if not key == 'hide_until_upgrades_available':
+            return
+
+        if key == 'hide_until_upgrades_available':
+            key = f'{prefix}{key}'
+    
+        if isinstance(value, str):
+            if not value.strip():
+                return
+
+            if value.lower() in ("true", "yes", "on", "1"):
+                value = True
+            else:
+                value = False
+
+        print(f"[update_settings_dialog] Try update settings dialog via dbus: {key} = {value}")
+        logger.debug("[update_settings_dialog] Try update settings dialog via dbus: %s = %s", key, value)
+        try:
+            # Connect to session bus
+            bus = dbus.SessionBus()
+            
+            try:
+                # dbus proxy object
+                proxy = bus.get_object(SETTINGS_OBJECT_NAME, SETTINGS_OBJECT_PATH)
+                
+                # dbus interface
+                interface = dbus.Interface(proxy, SETTINGS_OBJECT_IFACE)
+                
+                # debus method call to update settings dialog with key/value
+                if key == 'hide_until_upgrades_available':
+                    key = "hide"
+                #print(f"interface.SetValue(str({key}), str({value}))")
+                interface.SetValue(str(key), str(value))
+            
+            except dbus.exceptions.DBusException as e:
+                # updater settings dialog not running
+                #print(f"UpdaterSettings dialog not running.: {e}")
+                #print(f"UpdaterSettings dialog not running.")
+                logger.debug("[update_settings_dialog] UpdaterSettings appears to be not running")
+                pass
+        
+        except Exception as e:
+            print(f"Unexpected D-Bus error: {e}")
+            pass
+
+
+    def on_hide_until_upgrades_available_checkbox_toggledXXXXXXX(self, checked):
+        # save hide_until_upgrades_available selection into settings dict
+        self.settings["hide_until_upgrades_available"] = checked
+        self.qsettings.setValue("Settings/hide_until_upgrades_available", checked)
+        print(f"toggled hide_until_upgrades_available: {checked}")
+        self.update_systray_icon("hide_until_upgrades_available", checked)
+
+    # update_settings_dialog
+    def _on_hide_until_upgrades_available(self):
+        logger.debug("[_on_hide_until_upgrades_available] Clicked _on_hide_until_upgrades_available")
+        self._settings["hide_until_upgrades_available"] = True
+        self.setVisible(False)
+        self.qsettings.setValue("Settings/hide_until_upgrades_available", True)
+        self.qsettings.sync()
+        self.update_settings_dialog("hide_until_upgrades_available", True)
+        pass
+        
+    def _onLocalQuit(self):
+        self.handleQuit()
+        QSystemTrayIcon.hide(self)
+        QApplication.quit()
+
+    def _clean_notifications(self):
+        if self.notification:
+            self.notification.close()
+
+    def handleQuit(self):
+        """
+        Any cleanup you need to do *before* the app closes
+        (e.g. save settings, log messages, notify others…)
+        """
+        if self.notification:
+            self.notification.close()
+
+        release_runtime_lock(self.run_time_path)
+        logger.debug("SystemTrayIcon is cleaning up...")
+ 
+    def get_app_name_from_path(self, fullpath: str) -> str:
+        """
+        fullpath: absolute path to a .desktop file,
+                  e.g. '/usr/share/applications/mx-package-installer.desktop'
+        """
+        entry = DesktopEntry(fullpath)
+        return entry.getName()
+
+    def make_launcher(self, tag_name: str):
+        """
+        Returns a slot that, when called  "UPDATER_ACTION_RUN <tag_name>" asynchronously.
+        """
+        def launcher():
+
+            self._clean_notifications()
+           
+            exe = self.registry[tag_name][2]
+            # action with lock wrapper
+            action = UPDATER_ACTION_RUN
+            logger.debug("Start action %r %r", action, tag_name)
+
+            # run wrapper with Popen
+            subprocess.Popen(
+                [action, tag_name],
+                ##stdout=subprocess.DEVNULL,
+                ##stderr=subprocess.DEVNULL,
+            )
+
+        return launcher
+
+    def set_action_enabled(self, tag: str, enabled: bool):
+        """
+        Helper to enable/disable a QAction by tag_name.
+        """
+        act = self.actions.get(tag)
+        if not act:
+            return
+        act.setDisabled(not enabled)
+
+
+    def tray_icon_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Context:
+            # right click popup menu
+            logger.debug("self.right_click()")
+            self.right_click()
+        elif reason == QSystemTrayIcon.ActivationReason.Trigger:
+            # left click
+            logger.debug("self.left_click()")
+            left_click = self._settings.get("left_click", "view_and_upgrade")
+            if left_click == "package_manager":
+                left_click = "synaptic"
+            elif left_click == "package_installer":
+                left_click = "packageinstaller"
+                
+            action = self.actions.get(left_click)
+            if action:
+                action.trigger()
+
+        elif reason == QSystemTrayIcon.ActivationReason.MiddleClick:
+            # middle-click -> custom action (if defined) or popup menu
+            logger.debug("self.middle_click()")
+            middle = self.actions.get("middle_click")
+            if middle:
+                middle.trigger()
+            else:
+                self.right_click()
+
+    def right_click(self):
+        self.menu.exec()
+        #self.menu.exec(QCursor.pos())
+        #self.contextMenu().exec(QCursor.pos())
+
+
+    def is_valid_upgrades_tuple(self, obj: Any) -> bool:
+        return (
+            isinstance(obj, (list, tuple))
+            and len(obj) == 4
+            and all(isinstance(x, int) for x in obj)
+        )
+    
+    def load_state(self) -> Optional[Dict[str, Any]]:
+        logger.debug("loading state file '%s'", STATE_FILE)
+        try:
+            with STATE_FILE.open("r", encoding="utf-8") as f:
+                state = json.load(f)
+                logger.debug("loaded state file=%s\n%s", STATE_FILE, json.dumps(state, indent=2))
+                return state
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning("Could not load state file %s: %s", STATE_FILE, e)
+            return None
+
+    def validate_state(self, state: Dict[str, Any]) -> bool:
+            
+        try:
+            full_upgrades = state["upgrades-available"]["full-upgrade"]
+            basic_upgrades = state["upgrades-available"]["basic-upgrade"]
+        except (KeyError, TypeError) as e:
+            logger.warning("State file missing required keys or wrong structure: %s", e)
+            return False
+    
+        if not self.is_valid_upgrades_tuple(full_upgrades):
+            logger.warning("Invalid full-upgrades tuple")
+            return False
+    
+        if not self.is_valid_upgrades_tuple(basic_upgrades):
+            logger.warning("Invalid basic-upgrades tuple")
+            return False
+   
+        return True
+    
+
+
+    def files_exist(self, directory, pattern):
+        """
+        Check if files matching the glob pattern exist in the specified directory.
+       
+        """
+        # Construct the full search path
+        search_path = os.path.join(directory, pattern)
+        
+        # Use glob to find matching files
+        matching_files = glob.glob(search_path)
+        
+        # Return True if any files match the pattern
+        return len(matching_files) > 0
+
+
+
+def make_notification(title, message, icon=None, timeout=10_000):
+    """
+    Create notify2.Notification whose own _closed_callback is silenced
+    so it won’t raise KeyErrors if the notification disappears early.
+    """
+    n = notify2.Notification(title, message, icon)
+    n.set_timeout(timeout)
+
+    # original closed callback 
+    orig_cb = getattr(n, "_closed_callback", None)
+
+    def _silent_closed(nid, reason):
+        # to inspect "reason":
+        #   1 expired, 2 dismissed by user, 3 closed by call
+        # ignore KeyError:
+        try:
+            if orig_cb:
+                orig_cb(nid, reason)
+        except KeyError:
+            pass
+
+    # replace notification's handler:
+    n._closed_callback = _silent_closed
+    return n
+
+
+def ensure_lock_dir(base: Path, mode: int) -> bool:
+    """
+    Ensure that "base" exists and has exactly the given mode bits.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        if not base.exists():
+            base.mkdir(parents=True, exist_ok=True)
+        # fetch current permissions
+        st = base.stat()
+        current_mode = stat.S_IMODE(st.st_mode)
+        if current_mode != mode:
+            # try to reset
+            base.chmod(mode)
+            # recheck
+            st = base.stat()
+            if stat.S_IMODE(st.st_mode) != mode:
+                return False
+        return True
+    except PermissionError:
+        return False
+    except OSError:
+        return False
+
+def acquire_runtime_lock() -> Path | None:
+    """
+    Returns the Path to the lock file  or None.
+    """
+    uid = os.geteuid()
+    filename = f"mx-updater-systrayicon-{uid}.lock"
+    # primary lock dir
+    run_lock = Path("/run/lock")
+    desired_mode = 0o1777
+
+    if ensure_lock_dir(run_lock, desired_mode):
+        lock_path = run_lock / filename
+    else:
+        # fallback to per-user runtime dir
+        run_user = Path(f"/run/user/{uid}")
+        if not run_user.exists() or not run_user.is_dir():
+            return None
+        lock_path = run_user / filename
+
+    try:
+        with lock_path.open("w") as f:
+            # write lock file with pid
+            f.write(str(os.getpid()))
+            #lock_path.touch(exist_ok=True)
+        return lock_path
+    except OSError:
+        return None
+
+def release_runtime_lock(lock_path: Path | None) -> None:
+    """
+    Remove the lock file if it exists.
+    """
+    if lock_path is None:
+        return
+
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def main(bus, logger):
+    logger.debug("")
+    logger.debug("qdbus6  org.mxlinux.AptSystrayIcon /org/mxlinux/AptSystrayIcon")
+    logger.debug("qdbus6  org.mxlinux.AptSystrayIcon /org/mxlinux/AptSystrayIcon org.mxlinux.AptSystrayIcon.GetValue")
+    logger.debug("qdbus6  org.mxlinux.AptSystrayIcon /org/mxlinux/AptSystrayIcon org.mxlinux.AptSystrayIcon.SetValue new_value")
+    logger.debug("qdbus6  org.mxlinux.AptSystrayIcon /org/mxlinux/AptSystrayIcon org.mxlinux.AptSystrayIcon.Quit")
+    logger.debug("qdbus6  org.mxlinux.AptSystrayIcon /org/mxlinux/AptSystrayIcon org.freedesktop.DBus.Introspectable.Introspect")
+    logger.debug('dbus-send --session --dest=org.mxlinux.AptSystrayIcon --type=signal /org/mxlinux/AptSystrayIcon org.mxlinux.AptSystrayIcon.ActionStatusChanged string:"view_and_upgrade" boolean:true')
+    logger.debug('dbus-send --session --dest=org.mxlinux.AptSystrayIcon --type=signal /org/mxlinux/AptSystrayIcon org.mxlinux.AptSystrayIcon.Quit')
+
+    session_bus = bus
+    system_bus = dbus.SystemBus()
+
+     # Session D-Bus service
+    #bus_name = dbus.service.BusName(TRAYICON_OBJECT_NAME, session_bus)
+    service = SystemTrayService(session_bus, TRAYICON_OBJECT_PATH)
+       
+    app = QApplication(sys.argv)
+    app.setApplicationName("mx-updater")
+
+    tray_icon = SystemTrayIcon(service, session_bus, system_bus)
+
+    tray_icon.show()
+
+    #service.quit_signal.connect(tray_icon.handleQuit)      # your custom cleanup
+    #service.quit_signal.connect(app.quit)             # then exit
+    
+    try:
+        # Start the Qt event loop
+        sys.exit(app.exec())
+    finally:
+        logger.debug("SystemTrayIcon has exited.")
+
+ 
+def signal_handler(sig, frame):
+    logger.debug("Received termination signal %r. Cleaning up...", sig)
+    # any cleanup here ...
+    QApplication.quit()
+    sys.exit(0) 
+
+
+#---------------------
+# monkey patch notify2 to avoid keyerror exception on closed notifications
+#---------------------
+_orig_closed_cb = notify2._closed_callback
+def _safe_closed_callback(nid, reason):
+    try:
+        _orig_closed_cb(nid, reason)
+    except KeyError:
+        # notification already gone: ignore
+        pass
+notify2._closed_callback = _safe_closed_callback
+
+
+    
+def unhide_systray(bus):
+    """
+    Try to unhide Systray icon, if it is hidden.
+    """
+    key = "hide_until_upgrades_available"
+    val = "false"
+    print("[Debug] Try to unhide Updater SystrayIcon")
+    logger.info("Try to unhide Updater SystrayIcon")
+
+    try:
+        qsettings = QSettings("MX-Linux", "mx-updater")
+        qsettings.setValue(f"Settings/{key}", val)
+        qsettings.sync()
+    except Exception as e:
+        print(f"Unexpected QSettings error: {e}")
+        pass
+    
+    try:
+        # dbus proxy object
+        proxy = bus.get_object(SETTINGS_OBJECT_NAME, SETTINGS_OBJECT_PATH)
+        interface = dbus.Interface(proxy, SETTINGS_OBJECT_IFACE)
+        interface.SetValue(str(key), str(val))
+    
+    except dbus.exceptions.DBusException as e:
+        # updater settings dialog not running
+        #print(f"UpdaterSettings dialog not running.")
+        logger.debug("[unhide_systray] UpdaterSettings appears to be not running")
+        pass
+    
+    except Exception as e:
+        print(f"Unexpected D-Bus error: {e}")
+        pass
+
+
+    try:
+        # dbus proxy object
+        proxy = bus.get_object(TRAYICON_OBJECT_NAME, TRAYICON_OBJECT_PATH)
+        interface = dbus.Interface(proxy, TRAYICON_OBJECT_IFACE)
+        interface.SetValue(str(key), str(val))
+    
+    except dbus.exceptions.DBusException as e:
+        # updater settings dialog not running
+        #print(f"UpdaterSettings dialog not running.")
+        logger.debug("[update_settings_dialog] UpdaterSettings appears to be not running")
+        pass
+    
+    except Exception as e:
+        print(f"Unexpected D-Bus error: {e}")
+        pass
+
+   
+
+    
+if __name__ == "__main__":
+
+    
+    #----------
+    # D-Bus
+    #----------
+    # initialize the D-Bus main loop
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+
+    
+    # Check updater-systray icon is already running
+    logger.debug("Trying to connected to session bus.")
+    try:
+        # connect to session bus
+        session_bus = dbus.SessionBus()
+        logger.debug("OK: Connected to session bus.")
+    except dbus.DBusException as e:
+        logger.error("Unable to connect to session bus: %r", e)
+        sys.exit(1)
+
+    # try unhide systray icon if already running
+    if not args.autostart:
+        unhide_systray(session_bus)
+
+    # if already running, bail out - no double runs
+    try:
+        if session_bus.name_has_owner(TRAYICON_OBJECT_NAME ):
+            logger.info("%r is already running, exiting.", TRAYICON_OBJECT_NAME )
+            sys.exit(0)
+        else:
+            logger.debug("%r appears to be not running.", TRAYICON_OBJECT_NAME )
+
+    except dbus.DBusException as e:
+        logger.error("Error checking name ownership: %r", e)
+        sys.exit(1)
+
+    # request bus name
+    try:
+        result = session_bus.request_name(
+            TRAYICON_OBJECT_NAME,
+            dbus.bus.NAME_FLAG_DO_NOT_QUEUE
+        )
+    except dbus.DBusException as e:
+        logger.error(f"Failed to request name {TRAYICON_OBJECT_NAME}: {e}")
+        sys.exit(1)
+
+    if result != dbus.bus.REQUEST_NAME_REPLY_PRIMARY_OWNER:
+        logger.error("Could not become primary owner (got %r), exiting.", result)
+        sys.exit(1)
+
+    
+    """
+    # move into background - fork current process
+    pid = os.fork()
+    if pid > 0:
+        # parent exit
+        sys.exit()
+
+    # child process
+    os.setsid()
+    """
+    
+    # set signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGHUP, signal_handler)
+
+    # setup localization
+    _ = L10N().tn.gettext
+    _a = L10N().ta.gettext
+    ngettext = L10N().tn.ngettext
+
+    # start main on session bus
+    logger.debug("Starting Apt Systray Icon")
+    main(session_bus, logger)

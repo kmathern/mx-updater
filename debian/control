@@ -1,0 +1,36 @@
+Source: mx-updater
+Section: admin
+Priority: optional
+Maintainer: fehlix <fehlix@mxlinux.org>
+XSBC-Original-Maintainer: Kent Mathern <maintainer@mepiscommunity.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ debhelper (>= 13),
+ librsvg2-bin (>=2.50),
+Standards-Version: 4.7.2
+Homepage: https://github.com/MX-Linux/mx-updater
+
+Package: mx-updater
+Architecture: all
+Depends:
+ ${misc:Depends},
+ anacron,
+ apt (>= 2.2.4),
+ bash (>= 3.2-4),
+ dbus-bin,
+ python3-notify2,
+ python3-pyqt6,
+ python3-colorama,
+ python3-psutil,
+ python3-pydbus,
+ unattended-upgrades,
+ util-linux-locales,
+ xdotool,
+ xfce4-terminal | x-terminal-emulator
+Recommends:
+ policykit-1-gnome | lxpolkit | polkit-1-auth-agent,
+ synaptic
+Conflicts: apt-notifier, mepis-aptnotify
+Replaces: apt-notifier, mepis-aptnotify 
+Description: tray applet to notify of system and application updates
+ .

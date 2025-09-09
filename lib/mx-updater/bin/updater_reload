@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# script to refresh pakages lists by running apt-get update
+# with adding count lines of available and held back upgrades
+# part of apt-notifier package
+
+# define a function to make xgettext ignore translations used here
+updater_gettext() { gettext "$@"; }
+
+# check privileges
+if [ $(id -u) != 0 ]; then
+    MSG='This command needs %s privileges to be executed.\n'
+    printf "$(updater_gettext -d su-to-root "$MSG")" 'root'
+    exit 1
+fi
+
+UPDATER_SHLIB=/usr/lib/mx-updater/shlib/updater_shlib
+
+if [ -f "$UPDATER_SHLIB" ]; then
+      . "$UPDATER_SHLIB"
+fi
+
+UPDATER_USE_NALA=$(get_config_item "use_nala" "false")
+AUTO_CLOSE_TIMEOUT=$(get_config_item "auto_close_timeout" "10")
+read -r AUTO_CLOSE  < <(get_config_item "auto_close" "true")
+
+# use nala if desired and available
+: ${UPDATER_USE_NALA:=false}
+export UPDATER_USE_NALA
+if [ "${UPDATER_USE_NALA}" = "true" ]; then
+    if ! which nala >/dev/null; then
+        UPDATER_USE_NALA="false"
+    fi
+fi
+
+
+if [ "${UPDATER_USE_NALA}" = "true" ]; then
+        NalaPrefs="--option Nala::update_show_packages=false"
+        echo "nala update"
+        nala update $NalaPrefs 
+else
+        echo "apt update"
+        apt update  --option 'APT::Cmd::Show-Update-Stats=0'
+fi
+[ -d /var/lib/apt/periodic ] || mkdir -p /var/lib/apt/periodic
+touch /var/lib/apt/periodic/update-stamp
+working="...$(updater_gettext -d apt ' [Working]')..."
+printf "${working}"
+
+UPDATER_COUNTS=$(/usr/lib/mx-updater/bin/updater_count)
+
+printf $'\r'"$(printf '%*s' ${#working})"
+echo
+#echo 'UPDATER_COUNTS=$(/usr/lib/apt-notifier/bin/updater_count)'
+echo "$UPDATER_COUNTS"
+echo
+
+# auto close timeout
+: ${AUTO_CLOSE_TIMEOUT:=10}
+
+default_timeout=10
+if [ -z "${AUTO_CLOSE_TIMEOUT}" ]; then
+    AUTO_CLOSE_TIMEOUT=$default_timeout
+fi
+if [ -n "${AUTO_CLOSE_TIMEOUT//[0-9]/}" ]; then
+    AUTO_CLOSE_TIMEOUT=$default_timeout
+fi
+
+if [ -f "$UPDATER_SHLIB" ]; then
+    if [ "$AUTO_CLOSE" = "true" ]; then
+        press_any_key_stop_auto_close && exit
+    fi
+    press_any_key_to_close && exit
+fi
+
+exit

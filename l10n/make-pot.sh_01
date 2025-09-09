@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# creates amx-updater.pot file 
+
+MODULES=(
+    ../lib/modules/mx-updater.py  
+    ../lib/modules/aptnotifier_xlate.py
+    )
+
+DESKTOPS=(
+    ../xdg/mx-updater-autostart.desktop.in
+    ../xdg/mx-updater.desktop.in
+    )
+
+POLICIES=(
+    ../polikit/actions/org.mxlinux.mx-updater.auto-update-enable.policy
+    ../polikit/actions/org.mxlinux.mx-updater.auto-update-disable.policy
+    )
+
+PKGNAME=mx-updater
+POTFILE=mx-updater.pot
+
+echodo() { local run="$1"; shift; echo "$run" "${@@Q}"; "$run" "$@"; }
+
+OPTS="--no-wrap --sort-output --no-location --package-name=$PKGNAME"
+echodo xgettext $OPTS -L Python -cTRANSLATORS: -o $POTFILE "${MODULES[@]}"
+
+OPTS="--no-wrap --join-existing --no-location --package-name=$PKGNAME"
+echodo xgettext $OPTS --add-comments -L Desktop -o $POTFILE "${DESKTOPS[@]}"
+sed -i 's/charset=CHARSET/charset=UTF-8/'  $POTFILE
+
+for P in "${POLICIES[@]}"; do
+    msgid="$(grep -m1 -oP '<message[^>]*>\K[^<]+' $P)"
+    [[ -n $msgid ]] &&  printf '\nmsgid "%s"\nmsgstr ""\n' "$msgid" | tee -a $POTFILE
+done
+
+# put addtionaly msgid's into en-extra.pot
+EXTRA=en-extra.pot
+TEMPO=$EXTRA.tmp
+
+OPTS="--no-wrap --sort-output --no-location --package-name=$PKGNAME"
+echodo xgettext $OPTS --add-comments -kComment -L Desktop -o $TEMPO "${DESKTOPS[@]}"
+sed -i 's/charset=CHARSET/charset=UTF-8/'  $TEMPO
+
+for P in "${POLICIES[@]}"; do
+    msgid="$(grep -m1 -oP '<message[^>]*>\K[^<]+' $P)"
+    [[ -n $msgid ]] &&  printf '\nmsgid "%s"\nmsgstr ""\n' "$msgid" | tee -a $TEMPO
+done
+
+msggrep -v --no-wrap -K -e '^MX Updater$' -o $EXTRA $TEMPO
+rm $TEMPO

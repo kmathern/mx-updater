@@ -1,0 +1,446 @@
+#!/bin/bash
+
+# updater_shlip
+#
+# helper script to define utility functions
+#
+# part of mx-updater package
+#
+# this bash scripted is meant to be "sourced"
+# at /usr/lib/mx-updater/shlib/updater_shlib
+
+mygettext() {
+    gettext -d mx-updater "$@"
+}
+
+unset UPDATER_SHLIB_DEBUG
+
+debug() {
+    # a simple echo debug function
+    [ -z "${UPDATER_SHLIB_DEBUG}" ] && return 0
+    local func=$1;     shift
+    echo "[DEBUG:$func]" "$@" >&2
+    return 0
+}
+
+warn() {
+    # a simple echo debug 'warn' function
+    local func=$1;     shift
+    echo "[WARN:$func]" "$@" >&2
+    return 0
+}
+
+get_config_item() {
+
+    local config_item=$1
+    local default_value=$2
+
+    local CONFIG_DIST="MX-Linux"              # dist name where conf file is located und ~/.config
+    local CONFIG_NAME="mx-updater.conf"       # conf file name
+    local CONFIG_SECTION="Settings"           # section within  
+
+    local home_dir="$(eval echo ~$(logname))"
+    local config_file="${home_dir}/.config/${CONFIG_DIST}/${CONFIG_NAME}"
+
+    local SED_ITEM_PATTERN="[0-9a-zA-Z_]+"    # only digits, letter, and underscore for items
+    local SED_VALUE_PATTERN="[0-9a-zA-Z_-]+"  # like above, but additionally with an "-" hyphen
+
+    debug "get_config_item" "Got config_item '$config_item' default_value '$default_value'"  >&2
+    debug "get_config_item" "config_file is '$config_file'"  >&2
+
+    # trim both left and right whitespace
+    # like key=$(echo "$key" | xargs)
+    config_item="${config_item#"${config_item%%[![:space:]]*}"}"
+    config_item="${config_item%"${config_item##*[![:space:]]}"}"
+    debug "get_config_item" "Got config_item '$config_item'"  >&2
+
+    if [ -z "$config_item" ]; then
+        warn "get_config_item" "need a parameter" >&2
+        return 1
+    fi
+
+    if ! [[ "$config_item" =~ ^${SED_ITEM_PATTERN}$ ]]; then
+        warn "get_config_item" "need a valid config item as parameter (pattern '${SED_ITEM_PATTERN}', got '$config_item' " >&2
+        return 1
+    fi
+    local SED_KEY_PATTERN="$config_item"
+
+    if [ -z "${default_value}" ]; then
+        warn "get_config_item" "need a valid default value, got empty string '$default_value' " >&2
+        return 1
+    fi
+
+    # trim whitespaces
+    default_value="${default_value#"${default_value%%[![:space:]]*}"}"
+    default_value="${default_value%"${default_value##*[![:space:]]}"}"
+
+    if ! [[ "$default_value" =~ ^${SED_VALUE_PATTERN}$ ]]; then
+        warn "get_config_item" "need a valid default value (pattern '${SED_VALUE_PATTERN}'), got '$default_value' " >&2
+        return 1
+    fi
+
+
+    # If config file doesn't exist, return default settings
+    if [ ! -f "$config_file" ]; then
+        warn "get_config_item" "Config file '$config_file' not found or is not a regular file. Using default value: '$default_value'" >&2
+        echo "$default_value"
+        return 0
+    fi
+
+    if [ ! -r "$config_file" ]; then
+        warn "get_config_item" "Config file '$config_file' not readable. Using default: '$default_value'" >&2
+        echo "$default_value"
+        return 0
+    fi
+
+    if [ ! -s "$config_file" ]; then
+        warn "get_config_item" "Config file '$config_file' is empty. Using default: '$default_value'" >&2
+        echo "$default_value"
+        return 0
+    fi
+
+
+    IFS=$'\t' read -r key value < <(
+                sed -nr "/^[[]${CONFIG_SECTION}[]]/,/^[[]/{
+                    s/\s*//g;
+                    s/^(${SED_KEY_PATTERN})=(${SED_VALUE_PATTERN})/\1\t\2/p
+                    }" "$config_file" # 2>/dev/null
+                    )
+
+    debug "get_config_item" "Got key '$key' value '$value'"  >&2
+
+    # trim both left and right whitespace
+    # value=$(echo "$value" | xargs)
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if ! [[ "$value" =~ ^[0-9a-zA-Z_-]+$ ]]; then
+        value="$default_value"
+    fi
+
+    echo "$value"
+    
+    # return success
+    return 0
+}
+
+
+read_auto_close_timeout() {
+    # Usage
+    # read -r AUTO_CLOSE_TIMEOUT < <(read_auto_close_timeout)
+    local home_dir=$(eval echo ~$(logname))
+    local config_file="${home_dir}/.config/MX-Linux/mx-updater.conf"
+    local sed_pattern="auto_close_timeout"
+
+    local default_value=10
+
+    # If config file doesn't exist, return default settings
+    if [ ! -f "$config_file" ]; then
+        echo "[Info] Config file '$config_file' not found or is not a regular file. Using defaults." >&2
+        return 0
+    fi
+
+    if [ ! -r "$config_file" ]; then
+        echo "[Info] Config file '$config_file' not readable. Using defaults." >&2
+        return 0
+    fi
+
+    if [ ! -s "$config_file" ]; then
+        echo "[Info] Config file '$config_file' is empty. Using defaults." >&2
+        return 0
+    fi
+
+    IFS=$'\t' read -r key value < <(
+                    sed -nr "/^[[]Settings[]]/,/^[[]/{
+                        s/\s*//g;
+                        s/^(${sed_pattern})=([0-9]+)/\1\t\2/p
+                        }" "$config_file" 2>/dev/null
+                        )
+
+    # trim both left and right whitespace
+    # value=$(echo "$value" | xargs)
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    # check whether value is empty
+    if [ -z "${value}" ]; then
+        echo "$default_value"
+        return 0
+    fi
+    # check value contains digits only
+    if [ -n "${value//[0-9]/}" ]; then
+        echo "$default_value"
+        return 0
+    fi
+
+    echo "$value"
+    return 0
+}
+
+get_auto_close_timeout() {
+# Usage
+# read -r AUTO_CLOSE_TIMEOUT < <(get_auto_close_timeout)
+/usr/bin/python3 -c "
+from PyQt6.QtCore import QSettings;
+settings = QSettings('MX-Linux', 'mx-updater');
+print(settings.value('Settings/auto_close_timeout', 17))
+"
+}
+
+press_any_key_stop_auto_close() {
+    local default_timeout=10
+
+    read -r AUTO_CLOSE_TIMEOUT < <(read_auto_close_timeout)
+
+    if [ -z "${AUTO_CLOSE_TIMEOUT}" ]; then
+        AUTO_CLOSE_TIMEOUT=$default_timeout
+    fi
+    if [ -n "${AUTO_CLOSE_TIMEOUT//[0-9]/}" ]; then
+        AUTO_CLOSE_TIMEOUT=$default_timeout
+    fi
+
+    local count_timeout=${AUTO_CLOSE_TIMEOUT:0:9}
+
+    local length_timeout=${#count_timeout}
+    local count_str='<'
+    local count_len=24
+    local cols=$(/usr/bin/tput cols)
+    local count_line=$(printf "$count_str%.0s" $(eval echo {1..$count_len}));
+    local space_line=$(printf '%*s' $cols)
+    local done_line=$(printf '_''%.0s' $(eval echo {1..$cols}))
+
+    local anykey_to_stop=$(mygettext "press any key to stop automatic closing")
+    # TEST
+    # anykey_to_stop="${anykey_to_stop} [$UPDATER_AUTO_CLOSE_TIMEOUT] $USER@$HOME"
+    local anykey_to_close=$(mygettext "press any key to close")
+
+    anykey_to_stop="${anykey_to_stop^}..."
+    anykey_to_close="${anykey_to_close^}..."
+
+    local count_down=$count_timeout
+    local cntd_line
+    local cntd_space_line
+
+    local break_line="false"
+    (( count_len + 3 + ${#anykey_to_stop} + 20 >= cols )) && break_line="true"
+
+    if $break_line; then  echo "$anykey_to_stop"; fi
+    i=0
+    (( count_timeout < 1 )) &&  count_timeout=1
+    while (( i++ <  count_timeout+1)); do
+        (( count_str_len = count_len - ( (i-1) * count_len) /count_timeout ))
+        (( spc_len = count_len - count_str_len ))
+        cntd_line="${count_line:0:$count_str_len}";
+        cntd_done_line="${done_line:0:$spc_len}"
+        if $break_line; then
+           printf $'\r'"${cntd_line}${cntd_done_line}: %${length_timeout}i" $count_down;
+        else
+           printf $'\r'"%${length_timeout}i ${cntd_line}${cntd_done_line}: $anykey_to_stop" $count_down;
+        fi
+
+        (( count_down = count_timeout-i))
+        read -sr -t1 -n1 && break;
+    done && printf $'\r'"$space_line" || return 0
+    printf $'\r'"$space_line"
+    return 1
+}
+
+press_any_key_to_close() {
+
+    local cls_msg_en="press any key to close"
+    local cls_msg=$(mygettext "press any key to close")
+    # capitilize
+    cls_msg=${cls_msg^}
+
+    # add ellipses
+    cls_msg="${cls_msg^}..."
+    # TEST
+    # cls_msg="${cls_msg} [$UPDATER_AUTO_CLOSE_TIMEOUT] $USER@$HOME"
+
+    read -rsn 1 -p $'\r'"$cls_msg" -t 999999
+    return 0
+}
+
+translate() {
+    local text="$1"
+    local domain="MX"
+
+    #text=$(gettext -d mx-updater "$text")
+    text=$(mygettext -d mx-updater "$text")
+    # check DOMAIN is set - but could be  empty
+    [ -z "${DOMAIN+set}" ] && echo "$text" && return
+    # check text contains $domain
+    [ "${text}" == "${text/$domain}" ] && echo $text && return
+    text="${text//$domain /$DOMAIN }"
+    text="${text// $domain/ $DOMAIN}"
+    text="${text/  / }"
+    echo "$text"
+}
+
+
+
+updater_get_screen_info()
+{
+# Usage
+# read -r DW DH XOFF YOFF < <(updater_get_screen_info)
+/usr/bin/python3 -c "
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QGuiApplication
+app = QApplication([])
+primary_screen = QGuiApplication.primaryScreen()
+geo = primary_screen.geometry()
+print(f'{geo.width()} {geo.height()} {geo.x()} {geo.y()}'
+)"
+}
+
+updater_show() {
+
+    local msg="$1"
+    local cmd="$2"
+    local title="$3"
+    local icon="$4"
+    local icon_kde="$5"
+
+    local T="$title"
+    local I="$icon"
+
+    read -r DW DH XOFF YOFF < <(updater_get_screen_info)
+
+    # xdo
+    # read DW DH < <(xdotool getdisplaygeometry)
+    #if [ -z "$DW" ]; then
+    #    sleep 2
+    #    read DW DH < <(xdotool getdisplaygeometry)
+    #fi
+
+    TH=$((DH*2/3))  # desired terminal hight
+    if ((DW <= 1440)); then
+        TW=$((DW*2/3))  # desired terminal width
+    else
+        TW=$((DW*2/3))  # desired terminal width
+    fi
+
+    if ((DW >= 1600)); then
+        TW=$(( 1600 * 3 / 5 ))
+        TH=$((  900 * 2 / 3 ))
+    fi
+    # read -r XOFF YOFF < <(xrandr | sed -n -r '/connected primary/{/.*[0-9]+x[0-9]+\+([0-9]+)\+([0-9]+).*/{s::\1 \2:p;q}}')
+
+    : ${XOFF:=0}
+    : ${YOFF:=0}
+
+    TX=$(((DW-TW)/2 + XOFF))
+    TY=$(((DH-TH)/2 + YOFF))
+
+    CLASS_NAME='mx-updater'
+
+    XDO=""
+    # Wayland check - no xdotool
+    # if wayland is running, no xdotool or otehr X11 tool will work
+    # we disable xdo here, with a dummy command ": "
+
+    # - systemd is running
+    if [ -d /run/systemd/system ]; then
+        # - systemd is running
+        # session type either "Type=wayland" or  "Type=x11"
+        if  [ x"$(loginctl show-session $(echo $XDG_SESSION_ID) -p Type)" == x"Type=wayland" ]; then
+
+            XDO=": " # noop cmd for XDO
+        fi
+    else
+        # - no systemd , so we chweck only WAYLAND_DISPLAY env paramter
+        if  [ -n "$WAYLAND_DISPLAY" ]; then
+            XDO=": " # noop cmd for XDO
+        fi
+
+    fi
+
+    if [ -z "$XDO" ]; then
+
+        XSEARCH="xdotool sleep 0.2 search --onlyvisible --name '$T'"
+        XSIZE="windowsize $TW $TH"
+        XMOVE="windowmove $TX $TY"
+        XCLASS="set_window --classname ${CLASS_NAME} --class ${CLASS_NAME}"
+
+        XDO="$XSEARCH $XSIZE $XMOVE $XCLASS"
+    fi
+
+    CW=10 # char width - rough default
+    CH=20 # char hight - rough default
+
+    G="$(($TW/$CW))x$(($TH/$CH))+$TX+$TY"
+
+    SLEEP=0.3 # sleep
+
+    C='bash -c "test -n '"'${msg}'"' && echo '"'$msg'"'; sleep 0.5;'" $XDO;"' '"${cmd}"'"'
+    # test C='bash -c "test -n '"'${msg}'"' && echo '"'$msg'"'; sleep 0.5;'"echo TEST $XDO; $XDO;"' '"${cmd}"'"'
+    K='bash -c "test -n '"'${msg}'"' && echo '"'$msg'"'; sleep 1; '"${cmd}"'"'
+
+    XTE=$(readlink -e /usr/bin/x-terminal-emulator)
+
+    # check whether the installed qterminal version is up-to-date enough
+    if [ -z "${XTE##*qterminal*}" ]; then
+       CUR_QTV=$(dpkg-query -f '${Version}' -W qterminal 2>/dev/null)
+       MIN_QTV="1.2.0"
+       # compare versions
+       if dpkg --compare-versions "$CUR_QTV" lt  "$MIN_QTV"; then
+            if [ -x /usr/bin/xfce4-terminal ]; then
+                # use xfce4-terminal if installed
+                XTE=usr/bin/xfce4-terminal
+            else
+                # use best alternative
+                XTE=$(update-alternatives --display x-terminal-emulator | \
+                    grep '^/' | cut -d ' ' -f4,1 |  grep -v qterminal | \
+                    sort -k2nr  |  head -1 | cut -d ' ' -f1)
+            fi
+       fi
+    fi
+
+    case "$XTE" in
+
+      *gnome-terminal.wrapper|*gnome-terminal)
+            CMD="test -n '${msg}' && echo '$msg'; sleep 0.5; $XDO; $cmd"
+            gnome-terminal --wait --hide-menubar --geometry "$G" --title "$T" -- bash -c "$CMD"
+            ;;
+      *konsole)
+            if pgrep -x plasmashell >/dev/null; then
+               konsole --nofork --hide-menubar -qwindowgeometry "${TW}x${TH}+$TX+$TY" -qwindowicon "$icon_kde" -qwindowtitle "$T" -e "$K"
+            else
+               konsole -e "$C"
+               sleep 5
+            fi
+            ;;
+      *lxterminal)
+            lxterminal --no-remote -T "$T" -e "$C"
+            ;;
+      *mate-terminal|*mate-terminal.wrapper)
+            mate-terminal --hide-menubar --geometry="$G" --class="${CLASS_NAME}" --role="${CLASS_NAME}" --title="$T" --sm-client-disable --disable-factory  -- sh -c "$C" 2>&1
+            ;;
+      *qterminal)
+               qterminal -qwindowgeometry "${TW}x${TH}+$TX+$TY" -qwindowicon "$icon" -qwindowtitle "$T" -e "$C"
+            ;;
+      *roxterm)
+            roxterm --hide-menubar --separate "--geometry=$G" -T "$T" -e "$C" 2>/dev/null
+            ;;
+      *terminator)
+            terminator --no-dbus --icon=""$icon -T "$T" -e "$C" 2>/dev/null
+            ;;
+      *urxvt)
+            urxvt  -geometry "$G" -icon "$icon" -title "$T"  -e sh -c "echo '$msg'; sleep 1; $XDO; ${cmd}"
+            ;;
+      *xterm)
+            xterm  -fa monaco -fs 12 -bg black -fg white  -xrm 'XTerm.vt100.allowTitleOps: false' -T "$T"  -e "$C"
+            ;;
+      *zutty)
+            export EGL_LOG_LEVEL=fatal
+            zutty -title "$T" -geometry "$(($TW/$CW))x$(($TH/$CH))" -e sh -c "$C"
+            ;;
+      *)    if [ -x /usr/bin/xfce4-terminal ]; then
+                xfce4-terminal --disable-server --hide-menubar --geometry="$G"  --icon="$icon"  -T "$T" -e "$C" 2>&1 | grep -v 'SESSION_MANAGER environment variable not defined'
+            else
+                x-terminal-emulator -T "$T" -e "$C"
+            fi
+            ;;
+    esac
+}
+

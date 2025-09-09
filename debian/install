@@ -1,0 +1,15 @@
+bin                  usr
+icons/build/icons    usr/share
+l10n/build/locale    usr/share
+lib/mx-updater       usr/lib
+libexec/mx-updater   usr/libexec
+polkit/actions       usr/share/polkit-1
+share/mx-updater     usr/share
+
+l10n/build/xdg/mx-updater.desktop            usr/share/applications
+l10n/build/xdg/mx-updater-settings.desktop   usr/share/applications
+l10n/build/xdg/mx-updater-autostart.desktop  etc/xdg/autostart
+
+dbus/59updater-system-monitor                 etc/apt/apt.conf.d
+dbus/org.mxlinux.UpdaterSystemMonitor.conf    usr/share/dbus-1/system.d
+dbus/org.mxlinux.UpdaterSystemMonitor.service usr/share/dbus-1/system-services
