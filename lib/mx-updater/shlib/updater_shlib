@@ -35,6 +35,9 @@ get_config_item() {
     local config_item=$1
     local default_value=$2
 
+	local LC_CTYPE="C.UTF-8"
+	local LC_COLLATE="C.UTF-8"
+
     local CONFIG_DIST="MX-Linux"              # dist name where conf file is located und ~/.config
     local CONFIG_NAME="mx-updater.conf"       # conf file name
     local CONFIG_SECTION="Settings"           # section within  
@@ -131,6 +134,8 @@ read_auto_close_timeout() {
     local home_dir=$(eval echo ~$(logname))
     local config_file="${home_dir}/.config/MX-Linux/mx-updater.conf"
     local sed_pattern="auto_close_timeout"
+	local LC_CTYPE="C.UTF-8"
+	local LC_COLLATE="C.UTF-8"
 
     local default_value=10
 

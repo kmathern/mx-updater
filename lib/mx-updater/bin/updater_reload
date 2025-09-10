@@ -21,7 +21,7 @@ if [ -f "$UPDATER_SHLIB" ]; then
 fi
 
 UPDATER_USE_NALA=$(get_config_item "use_nala" "false")
-AUTO_CLOSE_TIMEOUT=$(get_config_item "auto_close_timeout" "10")
+AUTO_CLOSE_TIMEOUT=$(LC_COLLATE="C.UTF-8" get_config_item "auto_close_timeout" "10")
 read -r AUTO_CLOSE  < <(get_config_item "auto_close" "true")
 
 # use nala if desired and available
@@ -37,10 +37,10 @@ fi
 if [ "${UPDATER_USE_NALA}" = "true" ]; then
         NalaPrefs="--option Nala::update_show_packages=false"
         echo "nala update"
-        nala update $NalaPrefs 
+        LC_CTYPE="C.UTF-8" nala update $NalaPrefs 
 else
         echo "apt update"
-        apt update  --option 'APT::Cmd::Show-Update-Stats=0'
+        LC_CTYPE="C.UTF-8" apt update  --option 'APT::Cmd::Show-Update-Stats=0'
 fi
 [ -d /var/lib/apt/periodic ] || mkdir -p /var/lib/apt/periodic
 touch /var/lib/apt/periodic/update-stamp
