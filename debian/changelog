@@ -3,6 +3,8 @@ mx-updater (25.09.02mx25) mx; urgency=medium
   * restore saved start-at-login delay
   * right-click menu order
   * license file in about-popup
+  * basic-upgrade is upgrade
+  * use always LC_TYPE and LC_COLLATE with C.UTF-8
 
  -- fehlix <fehlix@mxlinux.org>  Wed, 10 Sep 2025 05:27:08 -0400
 
