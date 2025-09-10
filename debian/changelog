@@ -1,3 +1,11 @@
+mx-updater (25.09.02mx25) mx; urgency=medium
+
+  * restore saved start-at-login delay
+  * right-click menu order
+  * license file in about-popup
+
+ -- fehlix <fehlix@mxlinux.org>  Wed, 10 Sep 2025 05:27:08 -0400
+
 mx-updater (25.09.01mx25) mx; urgency=medium
 
   * Initial build of MX Updater based on apt-notifier
