@@ -335,12 +335,12 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._notify_init = True
             self._notify_caps = notify2.get_server_caps() or set()       
         except Exception as e:
-            logger.warning("Notification daemon not avialable: %r", e)
+            logger.info("Notification daemon not avialable: %r", e)
         
         if self._notify_init:
             self._notify_caps = notify2.get_server_caps() or set()       
             if "actions" not in self._notify_caps:
-                logger.warning("Notification with 'actions' not avialable!")
+                logger.info("Notification with 'actions' not avialable!")
         #---------------------------------------------------------------
         
         # Connections: PyQt signal to update_tray_icon method
@@ -1252,18 +1252,17 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         self.menu_items = [
             # (tag, label, state, exe)
-            ("view_and_upgrade",      _("View and Upgrade"),       True,  "/usr/bin/my-upgrade"),
-            ("synaptic",              synapic_label,     True,  "/usr/bin/synaptic"),
-            ("packageinstaller",     packageinstaller_label,      True,  "/usr/bin/mx-packageinstaller"),
-            #("synaptic",             _("Upgrade using Synaptic"),     True,  "/usr/bin/synaptic"),
-            ("apt_history",          _("History"),                 True,  "/usr/bin/my-hist"),
-            ("auto_update_log",      _("Auto-update log(s)"),      True,  "/usr/lib/mx-updater/bin/view_unattended_upgrades_logs.py"),
-            ("auto_update_dpkg_log", _("Auto-update dpkg log(s)"), True,  "/usr/lib/mx-updater/bin/view_unattended_upgrades_dpkg_logs.py"),
-            ("updater_reload",       _("Check for Updates"),       True,  "/usr/bin/my-check-up"),
-            ("repo_manager",         repo_manager_label,            True,  "/usr/bin/my-repo"),
-            ("settings_editor",      _("Preferences"),             True,  "/usr/bin/mx-updater-preferences"),
+            ("view_and_upgrade",      _("View and Upgrade"),       True,  "/usr/libexec/mx-updater/updater-view-and-upgrade.py"),
+            ("synaptic",              synapic_label,               True,  "/usr/bin/synaptic-pkexec"),
+            ("packageinstaller",     packageinstaller_label,       True,  "/usr/bin/mx-packageinstaller"),
+            ("repo_manager",         repo_manager_label,           True,  "/usr/bin/mx-repo-manager"),
+            ("updater_reload",       _("Check for Updates"),       True,  "/usr/lib/mx-updater/bin/updater_reload_run"),
+            ("apt_history",          _("History"),                 True,  "/usr/libexec/mx-updater/updater-history.py"),
+            ("auto_update_log",      _("Auto-update log(s)"),      True,  "/usr/libexec/mx-updater/mx-updater-auto-update_log.py"),
+            ("auto_update_dpkg_log", _("Auto-update dpkg log(s)"), True,  "/usr/libexec/mx-updater/mx-updater-auto-update_dpkg_log.py"),
+            ("settings_editor",      _("Preferences"),             True,  "/usr/bin/mx-updater-settings"),
             ("updater_about",        _("About"),                   True,  "/usr/libexec/mx-updater/updater_about.py"),
-            ("updater_restart",      _("Restart"),                   True,  "/usr/bin/mx-updater"),
+            ("updater_restart",      _("Restart"),                 True,  "/usr/libexec/mx-updater/updater-restart"),
 
         ]
 
@@ -1545,7 +1544,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                 logger.debug("loaded state file=%s\n%s", STATE_FILE, json.dumps(state, indent=2))
                 return state
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.warning("Could not load state file %s: %s", STATE_FILE, e)
+            logger.info("Could not load state file %s: %s", STATE_FILE, e)
             return None
 
     def validate_state(self, state: Dict[str, Any]) -> bool:
@@ -1554,7 +1553,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             full_upgrades = state["upgrades-available"]["full-upgrade"]
             basic_upgrades = state["upgrades-available"]["basic-upgrade"]
         except (KeyError, TypeError) as e:
-            logger.warning("State file missing required keys or wrong structure: %s", e)
+            logger.info("State file missing required keys or wrong structure: %s", e)
             return False
     
         if not self.is_valid_upgrades_tuple(full_upgrades):
