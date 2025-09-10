@@ -1,10 +1,10 @@
 mx-updater (25.09.02mx25) mx; urgency=medium
 
   * right-click menu order
+  * restore saved start-at-login delay at launch
   * license file in about-popup
   * basic-upgrade is upgrade
   * use always LC_TYPE and LC_COLLATE with C.UTF-8
-  * restore saved start-at-login delay at launch
   * remove leftover apt-notfier autostart entries
 
  -- fehlix <fehlix@mxlinux.org>  Wed, 10 Sep 2025 05:27:08 -0400
