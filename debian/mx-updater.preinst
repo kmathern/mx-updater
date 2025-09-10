@@ -9,6 +9,7 @@ set -e
 case "$1" in
   install|upgrade)
     rm -f /etc/xdg/autostart/mx-updater-autostart.desktop           || :
+    rm -f /etc/xdg/autostart/apt-notifier-autostart.desktop         || :
     rm -f /usr/share/applications/mx-updater.desktop                || :
     rm -f /etc/cron.d/mx-Unattended-Origins-Pattern-update          || :
     rm -r /usr/libexec/mx-updater/__pycache__      2>/dev/null      || :

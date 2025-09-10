@@ -43,11 +43,11 @@ if script_dir in sys.path:
 if MX_UPDATER_PATH not in sys.path:
     sys.path.insert(0, MX_UPDATER_PATH)
 
-import updater_config 
+import updater_config
 from updater_config import UpdaterSettingsManager
 from updater_translator import Translator
 
-# suppress some warnings 
+# suppress some warnings
 os.environ["QT_LOGGING_RULES"] = "*.debug=false;*.warning=false"
 #os.environ["QT_QPA_EGLFS_INTEGRATION"] = "none"
 #os.environ["LIBGL_DEBUG"] = "0"
@@ -78,7 +78,7 @@ from pydbus import SessionBus
 
 
 
-logging.basicConfig(level=logging.DEBUG, 
+logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -138,12 +138,12 @@ class SettingsService:
         if not key.strip():
             return
 
-        # write QSettings - nope will be done in update_setting_dialog 
+        # write QSettings - nope will be done in update_setting_dialog
         #self._settings.setValue(key, value)
         #force write to disk
         #self._settings.sync()
 
-        # emit PyQt signal value_changed_qt 
+        # emit PyQt signal value_changed_qt
         self._emitter.value_changed_qt.emit(key, value)
         # emit dbus signal for external listener
         #self.ValueChanged(key, value)
@@ -165,7 +165,7 @@ class SettingsService:
 class SettingsEditorDialog(QDialog):
 
     value_changed_signal = pyqtSignal(str, str)
-    
+
     def __init__(self):
         super().__init__()
 
@@ -173,10 +173,10 @@ class SettingsEditorDialog(QDialog):
         self.service = SettingsService(self)
         self.bus.publish(SETTINGS_OBJECT_NAME, self.service)
         self.dbus_call_back = True
-        
-        
+
+
         self._auto_upgrade_state_is_updating = False
-        
+
         # Connect to the service's Qt signal (avoids DBus loopback)
         self.service.value_changed_qt.connect(self.on_value_changed)
         # Connect the PyQt signal to the update_tray_icon method
@@ -192,17 +192,17 @@ class SettingsEditorDialog(QDialog):
         try:
             # Use the method from previous example to check current state
             current_state = self.is_unattended_upgrade_enabled()
-            
+
             # Set checkbox to match current state
             self.auto_upgrade_checkbox.setChecked(current_state)
-        
+
         except Exception as e:
             logger.error("[%s] Checking unattended upgrade state failed: %s", me, str(e))
 
     def is_unattended_upgrade_enabled(self):
         """
         Check if unattended upgrade is enabled
-        
+
         Returns:
             bool: True if unattended upgrade is enabled
         """
@@ -210,14 +210,14 @@ class SettingsEditorDialog(QDialog):
         try:
             cmd = ['apt-config', 'shell', 'opt', 'APT::Periodic::Unattended-Upgrade/b']
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            
+
             # match the single-quoted apt-config shell output
             output = result.stdout.strip()
             return output == "opt='true'"
-        
+
         except subprocess.CalledProcessError:
             return False
-    
+
 
     def on_value_changed(self, key, value):
         # Called when SetValue writes QSettings and emits the Qt signal
@@ -234,7 +234,7 @@ class SettingsEditorDialog(QDialog):
         if key.startswith(prefix):
             self.dbus_call_back = False
             logger.debug("[%s] dbus_call_back set to %s", me, self.dbus_call_back)
-            
+
             key = key.removeprefix(prefix)
 
         bool_keys = (
@@ -245,7 +245,7 @@ class SettingsEditorDialog(QDialog):
             'use_nala',
             'upgrade_assume_yes',
             'wireframe_transparent',
-        )   
+        )
 
         if key in bool_keys:
             if isinstance(value, str):
@@ -256,7 +256,7 @@ class SettingsEditorDialog(QDialog):
                 new_value = bool(value)
             else:
                 return
-            
+
         if key == 'auto_close_timeout':
             try:
                 # convert string to integer
@@ -269,14 +269,14 @@ class SettingsEditorDialog(QDialog):
 
                     if new_value < AUTO_CLOSE_TIMEOUT_MIN:
                         new_value = AUTO_CLOSE_TIMEOUT_MIN
-                        
+
                     if new_value > AUTO_CLOSE_TIMEOUT_MAX:
                         new_value = AUTO_CLOSE_TIMEOUT_MAX
 
             except ValueError:
                 print(f"Error: '{value}' is not a valid integer.")
                 return  # ignored
-            
+
         match key:
             case 'auto_close':
                 self.settings[key] = new_value
@@ -285,7 +285,7 @@ class SettingsEditorDialog(QDialog):
             case 'auto_close_timeout':
                 self.settings[key] = new_value
                 self.auto_close_timeout.setValue(new_value)
-                
+
             case 'hide_until_upgrades_available':
                 self.settings['hide_until_upgrades_available'] = new_value
                 self.hide_until_upgrades_available_checkbox.setChecked(new_value)
@@ -307,9 +307,9 @@ class SettingsEditorDialog(QDialog):
                 self.wireframe_transparent_checkbox.setChecked(new_value)
 
             case _:
-                # default if any 
+                # default if any
                 pass
-      
+
 
     def minimize(self):
         self.showMinimized()
@@ -344,7 +344,7 @@ class SettingsEditorDialog(QDialog):
         # Initialize settings manager
         self.settings_manager = UpdaterSettingsManager()
         self.qsettings = self.settings_manager.qsettings
-        
+
         # Load settings
         self.settings = self.settings_manager.load_all_settings()
         self.icon_set = self.settings_manager.get_icon_set_config()
@@ -392,7 +392,7 @@ class SettingsEditorDialog(QDialog):
         frame_margins = (0, 0, 0, 0)
         frame_margins = (0, 5, 0, 0)
         frame_margins = self.style_margins()
-        
+
         layout = QVBoxLayout()
         self.setLayout(layout)
         layout.setContentsMargins(*overall_margins)
@@ -414,12 +414,12 @@ class SettingsEditorDialog(QDialog):
                 )
         self.full_upgrade_radio.setToolTip(
         _(
-        """Upgrades all packages to their latest versions, 
+        """Upgrades all packages to their latest versions,
 which may include adding or removing packages
 to keep the system up-to-date and consistent."""))
         self.basic_upgrade_radio = QRadioButton(_("basic upgrade"))
         self.basic_upgrade_radio.setToolTip(
-        _("""Upgrades existing packages to their latest versions 
+        _("""Upgrades existing packages to their latest versions
 without installing new dependencies or removing existing packages."""))
 
         self.upgrade_button_map = {
@@ -430,7 +430,7 @@ without installing new dependencies or removing existing packages."""))
         # radio buttons to button group
         self.upgrade_button_group.addButton(self.full_upgrade_radio)
         self.upgrade_button_group.addButton(self.basic_upgrade_radio)
- 
+
         try:
             if self.settings["upgrade_type"] in ("dist-upgrade", "full-upgrade"):
                 self.full_upgrade_radio.setChecked(True)
@@ -445,7 +445,7 @@ without installing new dependencies or removing existing packages."""))
 
         if self.settings["use_nala"]:
             self.use_nala_checkbox.setChecked(True)
- 
+
         # Does /usr/bin/nala exists and is executable
         if os.path.isfile('/usr/bin/nala') and os.access('/usr/bin/nala', os.X_OK):
             # horizontal layout for full upgrade radio button and use_nala checkbox
@@ -484,7 +484,7 @@ without installing new dependencies or removing existing packages."""))
         #---------------------------------------------------------------
 
         # Allow to select only automatic upgrade
-    
+
         self.auto_upgrade_checkbox = QCheckBox(
             self.squeeze_spaces(
               #_("update automatically")))
@@ -495,7 +495,7 @@ Only updates existing packages without changing your system configuration.
 The updater icon shows the total number of updates, including automatic updates,
 when additional updates are available."""))
 
-    
+
         self.auto_cache_update_checkbox = QCheckBox(
             self.squeeze_spaces(
               _("update automatically")))
@@ -510,7 +510,7 @@ when additional updates are available."""))
             upgrade_layout.addWidget(self.auto_upgrade_checkbox)
         else:
             # Allow to select automatic upgrade and pkg cache update
-            # horizontal layout for auto-upgrade and cache-updater 
+            # horizontal layout for auto-upgrade and cache-updater
             auto_upgrade_h_layout = QHBoxLayout()
             auto_upgrade_h_layout.addWidget(self.auto_upgrade_checkbox)
 
@@ -607,7 +607,7 @@ when additional updates are available."""))
         self.icon_radio_buttons = {}  # name -> icon radio button
         self.wireframe_transparent_checkbox = QCheckBox(_("use transparent interior for no-updates wireframe"))
         self.wireframe_transparent_checkbox.setToolTip(
-            _("""Display transparent wireframe icons without color fill 
+            _("""Display transparent wireframe icons without color fill
 when no updates are available."""))
 
         for icon_name in self.icon_order:
@@ -665,16 +665,16 @@ when no updates are available."""))
         #---------------------------------------------------------------
         # upgrade_assume_yes_checkbox
         #---------------------------------------------------------------
-        
+
         checkbox_label = _("automatically confirm all package upgrades")
         checkbox_tooltip = _(
             "Automatically answers 'yes' to package management prompts during upgrades.\n"
             "Some system configuration changes may still require manual confirmation."
             )
-     
+
         self.upgrade_assume_yes_checkbox = QCheckBox(checkbox_label)
         self.upgrade_assume_yes_checkbox.setToolTip(checkbox_tooltip)
-        
+
 
         # set connection
         self.upgrade_assume_yes_checkbox.toggled.connect(
@@ -697,7 +697,7 @@ when no updates are available."""))
         # after a delay of seconds. The user can select the number of seconds.
         checkbox_tooltip = _("""Select this to launch "MX Updater" automatically
 at login after the specified delay in seconds.""")
-        
+
         self.start_8_login_checkbox = QCheckBox(checkbox_label)
         self.start_8_login_checkbox.setToolTip(checkbox_tooltip)
         settings_key = "Settings/start_at_login"
@@ -712,13 +712,13 @@ at login after the specified delay in seconds.""")
         value = self.qsettings.value(f"{settings_key}_delay", default_value, type=int)
         value = default_value if value < 0 else min(value, 60)
         self.start_8_login_delay_spinbox.setValue(value)
-        
+
         # TRANSLATORS: This is the abriavated string for 'seconds' shown within
         # the "start at login" selection field. Please use the most appropriate trnslated
         # string for the singular or plural form.
         seconds_suffix = _("sec")
         self.start_8_login_delay_spinbox.setSuffix(f" {seconds_suffix}")
-        
+
         # Connect spinbox value change to save method
         #self.start_8_login_delay_spinbox.valueChanged.connect(self.save_start_8_login_delay)
 
@@ -731,7 +731,7 @@ at login after the specified delay in seconds.""")
         start_8_login = start_8_login.lower() in ["true","on", "1"]
         self.start_8_login_checkbox.setChecked(start_8_login)
         self.start_8_login_delay_spinbox.setEnabled(start_8_login)
-        
+
         self.start_8_login_checkbox.toggled.connect(
             lambda checked: self.start_8_login_delay_spinbox.setEnabled(checked))
         self.start_8_login_checkbox.toggled.connect(
@@ -756,7 +756,7 @@ at login after the specified delay in seconds.""")
         # after system updates with a configurable idle time
         checkbox_tooltip = _("Automatically closes the terminal window after the specified\n"
                              "number of seconds of inactivity following system updates.")
-        
+
         self.auto_close_checkbox = QCheckBox(checkbox_label)
         self.auto_close_checkbox.setToolTip(checkbox_tooltip)
 
@@ -771,13 +771,13 @@ at login after the specified delay in seconds.""")
         #auto_close_timeout = self.qsettings.value("Settings/auto_close_timeout", 10, type=int)
         auto_close_timeout = self.load_setting("auto_close_timeout")
         self.auto_close_timeout.setValue(auto_close_timeout)
-        
+
         # TRANSLATORS: This is the abriavated string for 'seconds' shown within
         # the timeout selection field. Please use the most appropriate trnslated
         # string for the singular or plural form. Only one form is shown.
         seconds_suffix = _("sec")
         self.auto_close_timeout.setSuffix(f" {seconds_suffix}")
-        
+
         # Connect spinbox value change to save method
         self.auto_close_timeout.valueChanged.connect(self.save_auto_close_timeout)
 
@@ -786,7 +786,7 @@ at login after the specified delay in seconds.""")
 
         # Connect checkbox state change to enable/disable spinbox
         #self.auto_close_checkbox.stateChanged.connect(self.toggle_auto_close_timeout_spinbox)
-    
+
         #---------------------------------------------------------------
         # set inital state
         if self.settings.get("auto_close"):
@@ -808,12 +808,12 @@ at login after the specified delay in seconds.""")
         timeout_layout.addWidget(self.auto_close_checkbox)
         timeout_layout.addWidget(self.auto_close_timeout)
         timeout_layout.addStretch()  # Pushes items to the left
-        
+
         #---------------------------------------------------------------
         # use_dbus_notifications_checkbox
         self.use_dbus_notifications_checkbox = QCheckBox(_("use desktop notifications"))
         self.use_dbus_notifications_checkbox.setToolTip(
-        _("""In addition to change of the tray icon, 
+        _("""In addition to change of the tray icon,
 pop-up messages will be shown when
 system updates are available."""))
 
@@ -829,7 +829,7 @@ system updates are available."""))
         # hide_until_upgrades_available_checkbox
         self.hide_until_upgrades_available_checkbox = QCheckBox(_("hide until updates available"))
         self.hide_until_upgrades_available_checkbox.setToolTip(
-        _("""Hide the system update icon when no updates are available. 
+        _("""Hide the system update icon when no updates are available.
 Untick this box or run "MX Updater" from the menu to make the icon visible again."""))
 
         # set inital state
@@ -840,7 +840,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
         # set connection
         self.hide_until_upgrades_available_checkbox.toggled.connect(
-            lambda checked: 
+            lambda checked:
             self.on_hide_until_upgrades_available_checkbox_toggled(checked))
 
 
@@ -863,10 +863,10 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         """
         self.button_box = QDialogButtonBox(self)
         self.button_box.setStandardButtons(
-             QDialogButtonBox.StandardButton.Help 
-            #|QDialogButtonBox.StandardButton.Cancel 
+             QDialogButtonBox.StandardButton.Help
+            #|QDialogButtonBox.StandardButton.Cancel
             |QDialogButtonBox.StandardButton.Close
-            #|QDialogButtonBox.StandardButton.Ok, 
+            #|QDialogButtonBox.StandardButton.Ok,
             )
 
         # Get the Close button
@@ -883,38 +883,38 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
         #---------------------------------------------------------------
         # Close button
-        self.close_button = self.button_box.addButton(QDialogButtonBox.StandardButton.Close) 
-        
+        self.close_button = self.button_box.addButton(QDialogButtonBox.StandardButton.Close)
+
         close_text_untranslated = "&Close"
         close_button_text = self.close_button.text()
         # translate close button label
         if  close_button_text == close_text_untranslated:
             #try gettext translation
             close_text = _(close_text_untranslated)
-            
+
             if  close_text != close_text_untranslated:
-                # Set translated text 
+                # Set translated text
                 self.close_button.setText(close_text)
 
         # slots
         self.close_button.clicked.connect(self.on_close)
-       
+
         """
         # TODO:  when we have an actual help content
         #---------------------------------------------------------------
         # Help button
-        self.help_button = self.button_box.addButton(QDialogButtonBox.StandardButton.Help) 
+        self.help_button = self.button_box.addButton(QDialogButtonBox.StandardButton.Help)
 
         help_button_text = self.help_button.text()
         print(f'help_button_text:  = {help_button_text}')
-        
+
         # translate help button label
         if not '&' in help_button_text:
             # translate help button text
             help_text = _("&Help")
             print(f'help_text: _("&Help") = {help_text}')
             self.help_button.setText(help_text)
-            
+
         # slot
         self.help_button.clicked.connect(self.on_close)
         #---------------------------------------------------------------
@@ -959,6 +959,9 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         else:
             upgrade_type = "full-upgrade"
 
+        if  upgrade_type != "full-upgrade":
+            upgrade_type = "upgrade"
+
         self.settings['upgrade_type'] = upgrade_type
         self.qsettings.setValue(f"Settings/upgrade_type", upgrade_type)
 
@@ -984,26 +987,26 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         try:
             # Connect to the session bus
             bus = dbus.SessionBus()
-            
+
             try:
                 # dbus proxy object
                 proxy = bus.get_object(TRAYICON_OBJECT_NAME, TRAYICON_OBJECT_PATH)
-                
+
                 # dbus interface
                 interface = dbus.Interface(proxy, TRAYICON_OBJECT_IFACE)
-                
+
                 # method call to update systray icon settings with  key/value
                 interface.SetValue(str(key), str(value))
-            
+
             except dbus.exceptions.DBusException as service_error:
                 # handle systray icon is not running
                 #print(f"Systray icon not running: {service_error}")
                 print(f"Systray icon not running.")
                 pass
-        
+
         except Exception as e:
             print(f"Unexpected D-Bus error: {e}")
-    
+
 
     #---------------------------------------------------------------
     def update_view_and_upgrade(self, key, value):
@@ -1019,7 +1022,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
             return
 
-        
+
         prefix = 'no-dbus-callback@'
 
         print(f"Try update_view_and_upgrade via dbus: {key} = {value}")
@@ -1036,7 +1039,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
             'auto_close',
             'use_nala',
             'upgrade_assume_yes',
-        )   
+        )
 
         if key in bool_keys:
             if isinstance(value, str):
@@ -1061,32 +1064,32 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
                     key,
                     value,
                     )
-        
+
         try:
             # Connect to the session bus
             bus = dbus.SessionBus()
-            
+
             try:
                 # dbus proxy object
                 proxy = bus.get_object(
                         VIEW_AND_UPGRADE_OBJECT_NAME,
                         VIEW_AND_UPGRADE_OBJECT_PATH
                     )
-                
+
                 # dbus interface
                 interface = dbus.Interface(proxy, VIEW_AND_UPGRADE_OBJECT_IFACE)
-                
+
                 # method call to update settings with key/value
                 interface.SetValue(str(key), str(value))
-            
+
             except dbus.exceptions.DBusException as service_error:
                 logger.debug("[%s] view_and_upgrade dialog does not appear to be active.", me)
                 pass
-        
+
         except Exception as e:
             logger.error("[%s] Unexpected D-Bus error: %r", me, e)
             pass
-    
+
     #---------------------------------------------------------------
     def on_use_nala_checkbox_toggled(self, checked):
         # store use_nala selection into settings
@@ -1102,17 +1105,17 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         #self.qsettings.setValue(f"Settings/auto_update", checked)
         logger.debug("toggled auto_update: %s", checked)
         self.apply_auto_upgrade_checkbox_toggled(checked)
-    
+
     def on_auto_upgrade_checkbox_toggled(self, checked):
         # Prevent recursive calls
         if self._auto_upgrade_state_is_updating:
             return
-        
+
         logger.debug("toggled auto_upgrade: %s", checked)
         try:
             # prevent recursion
             self._auto_upgrade_state_is_updating = True
-            
+
             # current system state
             current_state = self.is_unattended_upgrade_enabled()
             logger.debug("current auto_upgrade state is: %s", current_state)
@@ -1120,10 +1123,10 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
             # state already set
             if current_state == checked:
                 logging.info(f"Auto-upgrade already set to {checked}.")
-                self.show_message("Info", "Auto-upgrade setting is already in the desired state. No changes made.", 
+                self.show_message("Info", "Auto-upgrade setting is already in the desired state. No changes made.",
                                   QMessageBox.Icon.Information)
                 return
-            
+
             # try to apply new state
             logger.debug("apply_auto_upgrade_checkbox_toggled: %s", checked)
             success = self.apply_auto_upgrade_checkbox_toggled(checked)
@@ -1131,33 +1134,33 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
             if success:
                 # state changed
-                self.show_message("Success", "Auto-upgrade setting updated successfully.", 
+                self.show_message("Success", "Auto-upgrade setting updated successfully.",
                                   QMessageBox.Icon.Information)
-                
+
             else:
                 # revert to previous state
                 self.auto_upgrade_checkbox.setChecked(current_state)
-                self.show_message("Failure", "Failed to update auto-upgrade setting.", 
+                self.show_message("Failure", "Failed to update auto-upgrade setting.",
                                   QMessageBox.Icon.Warning)
-        
+
         except Exception as e:
             logging.error(f"Toggle error: {e}")
             # Revert to previous known good state
             current_state = self.is_unattended_upgrade_enabled()
             self.auto_upgrade_checkbox.setChecked(current_state)
-            
+
             # Show error message to user
-            self.show_message("Error", f"An unexpected error occurred: {e}", 
+            self.show_message("Error", f"An unexpected error occurred: {e}",
                               QMessageBox.Icon.Critical)
-        
+
         finally:
             # reset state_is_updating flag
             self._auto_upgrade_state_is_updating = False
-    
+
     def show_message(self, title, message, icon):
         """
         Display a message box with given parameters
-        
+
         :param title: Message box title
         :param message: Message content
         :param icon: QMessageBox icon type
@@ -1169,7 +1172,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         msg_box.exec()
 
 
-        
+
     def apply_auto_upgrade_checkbox_toggled(self, checked):
         """
         Apply the selected configuration
@@ -1179,24 +1182,24 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
             # Check if Polkit is available
             #if not self.check_and_confirm_polkit():
             #    return
-            
+
             # Select appropriate command based on desired state
             if checked:
                 cmd = ['/usr/bin/pkexec', '/usr/lib/mx-updater/actions/auto-update-enable']
             else:
                 cmd = ['/usr/bin/pkexec', '/usr/lib/mx-updater/actions/auto-update-disable']
-            
+
             # Run the command
             result = subprocess.run(
-                cmd, 
-                check=True, 
-                capture_output=True, 
+                cmd,
+                check=True,
+                capture_output=True,
                 text=True
             )
-            
+
             success = checked == self.is_unattended_upgrade_enabled()
             return success
-        
+
         except subprocess.CalledProcessError as e:
             # Show error popup
             self.show_error_popup(
@@ -1204,7 +1207,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
                 message="Could not change automatic upgrades configuration",
                 details=f"Command failed [{e.returncode}]: {str(e.stderr)} "
             )
-    
+
     def show_error_popup(self, title, message, details=None):
         """
         Display an error popup
@@ -1215,12 +1218,12 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         error_dialog.setIcon(QMessageBox.Icon.Critical)
         error_dialog.setWindowTitle(title)
         error_dialog.setText(message)
-        
+
         if details:
             error_dialog.setDetailedText(details)
-        
+
         error_dialog.exec()
-    
+
     def on_wireframe_transparent_checkbox_toggled(self, checked):
         # store transparent icon selection into settings
         self.settings["wireframe_transparent"] = checked
@@ -1321,7 +1324,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         else:
             super().keyPressEvent(event)  # Call the base class method for other keys
     """
-    
+
     def squeeze_spaces(self, text):
         return re.sub(r'\s+', ' ', text.strip())
 
@@ -1414,7 +1417,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         # Get and print the current window title
         title = self.windowTitle()
         print(f"Current SettingsEditorDialog Title: {title}")
-    
+
 
 def is_dark_theme():
     return QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
@@ -1442,7 +1445,7 @@ def tooltip_stylesheet():
                 opacity: 230;  /* Slightly transparent */
             }
         """
-        
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)  # QApplication instance
     app.setApplicationName("mx-updater")
@@ -1484,7 +1487,7 @@ if __name__ == "__main__":
     print(f"/usr/lib/qt6/bin/qdbus {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  ")
 
     dialog.show()
-    
+
     dialog.print_window_title()
 
     sys.exit(app.exec())

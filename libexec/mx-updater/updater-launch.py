@@ -141,7 +141,7 @@ if args.restart:
 # retrieve startup delay and validate
 settings = QSettings('MX-Linux', 'mx-updater')
 try:
-    saved_delay = settings.value('Settings/start_at_login_delay', type=int)
+    saved_delay = settings.value('Settings/start_at_login_delay', default_delay, type=int)
 
     logger.debug("AutoStart saved_delay settings value is '%s'", saved_delay)
 
