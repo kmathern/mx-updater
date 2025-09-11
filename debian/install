@@ -5,6 +5,7 @@ lib/mx-updater       usr/lib
 libexec/mx-updater   usr/libexec
 polkit/actions       usr/share/polkit-1
 share/mx-updater     usr/share
+share/doc            usr/share
 
 l10n/build/xdg/mx-updater.desktop            usr/share/applications
 l10n/build/xdg/mx-updater-settings.desktop   usr/share/applications

@@ -1,7 +1,9 @@
 mx-updater (25.09.03mx25) mx; urgency=medium
 
-  * fix to enable automatic upgrade logs due to restrictive read permissions
   * restore autostart desktop entry
+  * fix to enable automatic upgrade logs due to restrictive read permissions
+  * add pycache stanzas to postinst and prerm
+  * add licence.html file to install
 
  -- fehlix <fehlix@mxlinux.org>  Thu, 11 Sep 2025 06:53:54 -0400
 
