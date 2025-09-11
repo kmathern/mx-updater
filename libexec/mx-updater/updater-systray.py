@@ -132,7 +132,7 @@ if args.autostart:
     )
     if not start_at_login_enabled:
         logger.info("MX UPDATER autostart is disabled, exiting")
-        sys.exit(1)    
+        sys.exit(1)
 
 #----------
 # Constants
@@ -165,7 +165,7 @@ class L10N():
     LOCALE_DOMAIN_APT_NOTIFIER = 'mx-updater'
     LOCALE_DOMAIN_APT = 'apt'
     LOCALE_DIR = '/usr/share/locale'
-    
+
     tn = gettext.translation(domain=LOCALE_DOMAIN_APT_NOTIFIER,
                              localedir=LOCALE_DIR, fallback=True
     )
@@ -173,12 +173,12 @@ class L10N():
     ta = gettext.translation(domain=LOCALE_DOMAIN_APT,
                              localedir=LOCALE_DIR, fallback=True
     )
-    
+
 class SystemTrayService(dbus.service.Object):
     """
     D-Bus service that provides a simple interface to get and set a value.
     """
-    
+
     def __init__(self, bus_name, object_path):
         super().__init__(bus_name, object_path)
         self._value = ""
@@ -214,7 +214,7 @@ class SystemTrayService(dbus.service.Object):
         self._emitter.value_changed_qt.emit(key, value)
         # emit dbus signal for external clients
         # self.ValueChanged(key, value)
-    
+
     @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="ss")
     def ValueChanged(self, key, value):
         """Signal emitted when the value changes."""
@@ -223,7 +223,7 @@ class SystemTrayService(dbus.service.Object):
     @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="sb")
     def ActionStatusChanged(self, tag, enabled):
         """
-        Dbus signal: 
+        Dbus signal:
         interface: TRAYICON_OBJECT_IFACE
         signal name: "ActionStatusChanged"
         signature: string, boolean
@@ -235,7 +235,7 @@ class SystemTrayService(dbus.service.Object):
 
     @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="sb")
     def ActionEntryVisible(self, entry_tag: str, visible: bool): pass
-    
+
     @dbus.service.signal(TRAYICON_OBJECT_IFACE, signature="b")
     def SystrayVisibilityChanged(self, visible: bool): pass
 
@@ -254,7 +254,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     tray_visibility_changed_signal = pyqtSignal(bool)
 
     quit_signal = pyqtSignal()
-    
+
     def __init__(self, service, session_bus, system_bus):
         super().__init__()
         self.session_bus = session_bus
@@ -271,7 +271,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                     "Could not acquire runtime lock. "
                     "Some features may not work.")
 
-        
+
         self.selected_settings = {}
         self._settings = {}
         # actions references to look up a QAction by tag_name
@@ -308,10 +308,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._settings["wireframe_transparent"] =  self.qsettings.value("Settings/wireframe_transparent", True)
 
 
-        # try load state 
+        # try load state
         with self._lock:
             loaded_state = self.load_state()
-    
+
             if (loaded_state is not None
                 and self.validate_state(loaded_state)
                 ):
@@ -326,23 +326,23 @@ class SystemTrayIcon(QSystemTrayIcon):
         #---------------------------------------------------------------
         # notification stuff
         self.notification = None
-        
+
         # init notify2 and capabilities
         self._notify_init = None
         self._notify_caps = set()
         try:
             notify2.init(_("MX Updater"))
             self._notify_init = True
-            self._notify_caps = notify2.get_server_caps() or set()       
+            self._notify_caps = notify2.get_server_caps() or set()
         except Exception as e:
             logger.info("Notification daemon not avialable: %r", e)
-        
+
         if self._notify_init:
-            self._notify_caps = notify2.get_server_caps() or set()       
+            self._notify_caps = notify2.get_server_caps() or set()
             if "actions" not in self._notify_caps:
                 logger.info("Notification with 'actions' not avialable!")
         #---------------------------------------------------------------
-        
+
         # Connections: PyQt signal to update_tray_icon method
         self.full_upgrades_changed_signal.connect(self.update_apt_icon_full)
         self.basic_upgrades_changed_signal.connect(self.update_apt_icon_basic)
@@ -350,9 +350,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         # register to upgrades_changes signal on system bus
         self.register_signal_receiver()
 
-        # request refresh 
+        # request refresh
         self.request_refresh()
-        
+
         # Connect the PyQt signal to the update_tray_icon method
         self.value_changed_signal.connect(self.update_tray_icon)
 
@@ -382,7 +382,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         )
         """
 
-        
+
 
 
         self.bus.add_signal_receiver(self._on_dbus_entry_enabled,
@@ -399,7 +399,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                                      dbus_interface=TRAYICON_OBJECT_IFACE,
                                      signal_name="SystrayVisibilityChanged",
                                      path=TRAYICON_OBJECT_PATH)
-        
+
 
         # connect Qt signals to systray icon
         self.entry_enabled_changed_signal.connect(self._apply_entry_enabled)
@@ -435,26 +435,26 @@ class SystemTrayIcon(QSystemTrayIcon):
     def get_upgrades_available(self):
         """
         Retrieve available upgrades via D-Bus.
-        
+
         Returns:
             dict: A dictionary of upgrade types and their corresponding upgrade information
         """
         try:
             # connect to system bus
-            bus = self.system_bus 
-            
+            bus = self.system_bus
+
             # create proxy
             proxy = bus.get_object(
-                SYSTEM_SERVICE_NAME, 
+                SYSTEM_SERVICE_NAME,
                 SYSTEM_OBJECT_PATH
             )
-            
+
             # get interface
             interface = dbus.Interface(proxy, SYSTEM_INTERFACE)
-            
+
             # call method  to get upgrades available
             upgrades = interface.GetUpgradesAvailable()
-            
+
             # convert D-Bus result to native types
             processed_upgrades = {
                 str(upgrade_type): tuple(int(value) for value in upgrade_info)
@@ -463,21 +463,21 @@ class SystemTrayIcon(QSystemTrayIcon):
 
             # update state
             self._state["upgrades-available"] = processed_upgrades
-            
+
             # update settings with old values
             #self._settings["full-old"] = processed_upgrades.get("full-upgrade", (0, 0, 0, 0))
             #self._settings["basic-old"] = processed_upgrades.get("basic-upgrade", (0, 0, 0, 0))
-            
+
             return processed_upgrades
-        
+
         except dbus.exceptions.DBusException as service_error:
             print(f"D-Bus service not available: {service_error}")
             return self._state["upgrades-available"]
-        
+
         except Exception as e:
             print(f"Unexpected D-Bus error: {e}")
             return self._state["upgrades-available"]
-            
+
 
     def get_defaults(self):
         self.defaults = {
@@ -553,7 +553,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             }
 
 
-        
+
         self.defaultsXXX = {
             'Settings' : {
                 'icon_look_default' : 'wireframe-dark',
@@ -742,7 +742,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         ##  print(f"Loaded preference auto_close_timeout: {auto_close_timeout}")  # Debug output
 
-        # check auto_close_timeout is within valid range 1..60 
+        # check auto_close_timeout is within valid range 1..60
         if auto_close_timeout < 1 or auto_close_timeout > 60 :
             auto_close_timeout = auto_close_timeout_default
 
@@ -804,7 +804,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def set_action_visble(self, tag: str, visible: bool):
         self._apply_entry_visible(tag, visible)
-        
+
     def _apply_entry_visible(self, tag: str, visible: bool):
         action = self.actions.get(tag)
         if action:
@@ -858,14 +858,14 @@ class SystemTrayIcon(QSystemTrayIcon):
                 launcher()  # run the subprocess
                 # optionally close the notification right away
                 n_obj.close()
-    
+
             # notify2 requires you pass an “action key” string, a label, and a callback
             n.add_action(
                 action_tag,      # action_key
                 label,           # button text
                 on_notify_action # callback
             )
-    
+
         n.show()
 
         if not self.notification:
@@ -874,16 +874,16 @@ class SystemTrayIcon(QSystemTrayIcon):
     def on_entry_enabled(self, tag: str, enable: bool):
         action = self.actions[tag]
         action.setEnabled(enable)
-    
+
     def on_menu_visibility_changed(self, visible: bool):
         self.tray_menu.setVisible(visible)
-    
+
     def on_systray_visibility_changed(self, visible: bool):
         if visible:
             self.tray_icon.show()
         else:
             self.tray_icon.hide()
-    
+
 
 
     def on_action_status_changed(self, tag: str, enabled: bool):
@@ -896,7 +896,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.action_status_changed_signal.emit(tag, enabled)
 
     def register_signal_receiver(self):
-        
+
         try:
             # Connect to the system D-Bus signal
             self.system_bus.add_signal_receiver(
@@ -930,11 +930,11 @@ class SystemTrayIcon(QSystemTrayIcon):
         try:
             proxy = self.system_bus.get_object(SYSTEM_SERVICE_NAME,
                                    SYSTEM_OBJECT_PATH)
-    
+
             iface = dbus.Interface(proxy, dbus_interface=SYSTEM_INTERFACE )
-    
+
             iface.Refresh()
-    
+
         except dbus.exceptions.DBusException as e:
             logger.debug(f"Error: {e}")
             logging.debug("ERROR: %r", e)
@@ -943,7 +943,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
     def quit(self):
         QApplication.quit()
-    
+
     def on_basic_upgrades_changed(self, basic_upgrades_available):
         """Slot to handle the D-Bus signal and emit the PyQt signal."""
         logger.debug("D-Bus basic_upgrades_changed_signal received with value: %r", basic_upgrades_available)
@@ -984,9 +984,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         except FileNotFoundError:
             print("File not found.")
             return ""
-    
 
-   
+
+
     def update_apt_icon(self, upgrade_type, upgrades_available):
 
         logger.debug("[update_apt_icon] System tray icon updated '%s' with D-Bus value: %s", upgrade_type, upgrades_available)
@@ -995,12 +995,12 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         state_file_conentent = self.cat_file(str(STATE_FILE))
         logger.debug("[update_apt_icon] cat STATE_FILE %s:\n%s", STATE_FILE, state_file_conentent)
-        
-        # try load state 
+
+        # try load state
         with self._lock:
             loaded_state = self.load_state()
             logger.debug("[update_apt_icon] loaded_state STATE_FILE %s:\n%s", STATE_FILE, loaded_state)
-    
+
             if loaded_state is not None and self.validate_state(loaded_state):
                 self._state["upgrades-available"]["full-upgrade"] = loaded_state["upgrades-available"]["full-upgrade"]
                 self._state["upgrades-available"]["basic-upgrade"] = loaded_state["upgrades-available"]["basic-upgrade"]
@@ -1017,8 +1017,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.set_tooltip()
         self.set_icon_look()
 
-    
- 
+
+
     def set_tooltip(self):
 
         upgrade_type  = self._settings.get("upgrade_type", "full-upgrade")
@@ -1034,8 +1034,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             upgrade_type = 'full-ugrade'
         else:
             upgrade_type = 'basic-ugrade'
-        
-        
+
+
         if (upgraded, newly_installed) == (0, 0):
             tooltip = _("No updates available")
             self._clean_notifications()
@@ -1044,8 +1044,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._apply_entry_visible("hide_until_updates_available", True)
             logger.debug("Tooltip : %s", tooltip)
             return
-            
-            
+
+
         total_updates = upgraded + newly_installed
 
         # use plural form
@@ -1054,12 +1054,12 @@ class SystemTrayIcon(QSystemTrayIcon):
                             "{num} new updates available",
                             total_updates
                             ).format(num=total_updates)
-        
+
         upgraded_and_new = _a("%lu upgraded, %lu newly installed, ")\
                             .replace("%lu", "{up:d}", 1)\
                             .replace("%lu", "{ni:d}", 1)\
                             .format(up=upgraded, ni=newly_installed)
-    
+
         to_remove_not_upgraded = _a("%lu to remove and %lu not upgraded.\n").strip()\
                             .replace("%lu", "{rm:d}", 1)\
                             .replace("%lu", "{nu:d}", 1)\
@@ -1070,11 +1070,11 @@ class SystemTrayIcon(QSystemTrayIcon):
             tooltip_upgrade_type = _("full upgrade")
         else:
             tooltip_upgrade_type = _("basic upgrade")
-        
+
         tooltip= f"{tooltip_upgrade_type}\n{total_available}\n{upgraded_and_new}\n{to_remove_not_upgraded}"
         logger.debug("Tooltip : %s", tooltip)
         self.setToolTip(tooltip)
- 
+
         use_dbus_notifications = self._settings.get('use_dbus_notifications', True)
 
         if use_dbus_notifications:
@@ -1105,10 +1105,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         elif key == 'icon_look':
             if value.startswith("wireframe"):
                 icon_look, _, transparent = value.partition(':')
-                self._settings['wireframe_transparent'] = transparent == "transparent" 
+                self._settings['wireframe_transparent'] = transparent == "transparent"
                 self._settings['icon_look'] = icon_look
             self.set_icon_look()
-                        
+
         #self.setToolTip(f"{value}")
         #self.showMessage("TraIcon Notification", f"{value}", QSystemTrayIcon.MessageIcon.Information)
 
@@ -1121,17 +1121,17 @@ class SystemTrayIcon(QSystemTrayIcon):
                 upgrade_type = 'full-upgrade' if value == 'full-upgrade' else 'basic-upgrade'
                 self._settings['upgrade_type'] = upgrade_type
                 self.set_tooltip()
-        
+
             case 'icon_look':
                 icon_look = value
                 if value.startswith("wireframe"):
                     icon_look, _, transparent = value.partition(':')
-                    self._settings['wireframe_transparent'] = transparent == "transparent" 
+                    self._settings['wireframe_transparent'] = transparent == "transparent"
 
                 self._settings['icon_look'] = icon_look
                 # TODO: needs update_apt_icon
                 self.set_icon_look()
-            
+
             case 'left_click':
                 if value.startswith("view_and_upgrade"):
                     self._settings['left_click'] = "view_and_upgrade"
@@ -1145,29 +1145,29 @@ class SystemTrayIcon(QSystemTrayIcon):
                     hide_until_upgrades_available = value
                 elif isinstance(value, str):
                     hide_until_upgrades_available = value.lower() in ("true", "yes", "1")
-                
+
                 self._settings['hide_until_upgrades_available'] = value.lower() in ("true", "yes", "1")
                 self.set_icon_look()
                 #self._apply_tray_visibility(not hide_until_upgrades_available)
                 pass
 
             case _:
-                # default handling if any 
+                # default handling if any
                 pass
 
     """
-    
+
             self._state = {
                 "upgrades-available": {
                     "full-upgrade": (0, 0, 0, 0),
                     "basic-upgrade": (0, 0, 0, 0),
                 }
             }
-    
+
             upgraded, newly_installed, to_remove, not_upgraded = upgrades_available
-    
+
     """
-    
+
     def set_icon_look(self):
 
         icon_look  = self._settings.get("icon_look")
@@ -1185,13 +1185,13 @@ class SystemTrayIcon(QSystemTrayIcon):
         if not icon_look or icon_look not in icon_look_allowed:
             icon_look = self.defaults.get("Settings",{}).get("icon_look_default")
             self._settings["icon_look"] = icon_look
-        
+
         # print(f"set_icon_look: icon_look  = {icon_look}")
         icons = self.defaults.get('Icons',{}).get(icon_look)
         # print("icons:")
         # pprint(icons)
         # pprint(icons)
-        
+
         icon_some = icons.get("icon_some")
         icon_none = icons.get("icon_none")
         #'icon_none_transparent'
@@ -1200,7 +1200,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # pprint(icons)
 
         upgraded, newly_installed, _, _ = self._state.get("upgrades-available",{}).get(upgrade_type,(0, 0, 0, 0))
-        
+
         if (upgraded, newly_installed) != (0, 0):
             logger.debug(f"set_icon_look:'{icon_some}'")
             self.setIcon(QIcon(icon_some))
@@ -1214,7 +1214,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.setIcon(QIcon(icon_none))
             hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
             self._apply_tray_visibility(not hide_until_upgrades_available)
-    
+
     def initUI(self):
 
         #self.setIcon(QSystemTrayIcon.Icon(":/icon.png"))
@@ -1228,7 +1228,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upgrades_available = self._state.get("upgrades-available", {}).get(upgrade_type, (0, 0, 0, 0))
 
         self.update_apt_icon(upgrade_type, upgrades_available)
-        
+
 
         # context menu
         self.menu = QMenu()
@@ -1242,12 +1242,12 @@ class SystemTrayIcon(QSystemTrayIcon):
         packageinstaller_label = self.get_app_name_from_path(
             "/usr/share/applications/mx-packageinstaller.desktop"
             ) or _("MX Package Installer")
-        logger.debug(f"MXPI:'{packageinstaller_label}'") 
+        logger.debug(f"MXPI:'{packageinstaller_label}'")
 
         repo_manager_label = self.get_app_name_from_path(
             "/usr/share/applications/mx-repo-manager.desktop"
             ) or _("MX Repo Manager")
-            
+
         logger.debug(f"REPO:'{repo_manager_label}'")
 
         self.menu_items = [
@@ -1279,8 +1279,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             if isinstance(item, tuple) and len(item) == 4:
                 tag, label, enabled, exe = item
                 self.registry[tag] = (label, enabled, exe)
-        
-        
+
+
         # tag                   executable
         # ---------------------------------------------------------------------
         # synaptic              /usr/sbin/synaptic
@@ -1290,9 +1290,9 @@ class SystemTrayIcon(QSystemTrayIcon):
         # view_and_upgrade      /usr/lib/mx-updater/bin/view_and_upgrade
         # apt_history           /usr/lib/mx-updater/bin/apt_history.py
         # ---------------------------------------------------------------------
-       
 
-        
+
+
         for item in self.menu_items:
             if isinstance(item, tuple) and len(item) == 4:
                 tag, label, state, exe = item
@@ -1312,7 +1312,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Check and set visibility for synaptic
         synaptic_is_available = (os.path.isfile('/usr/bin/synaptic-pkexec')
                                 and os.access('/usr/bin/synaptic-pkexec', os.X_OK))
-        
+
         synaptic_is_available = (os.path.isfile('/usr/bin/synaptic-pkexec')
                                 and os.access('/usr/bin/synaptic-pkexec', os.X_OK)
                                 and bool(self.actions["synaptic"]))
@@ -1324,23 +1324,16 @@ class SystemTrayIcon(QSystemTrayIcon):
                             and bool(self.actions["packageinstaller"]))
         self.set_action_visble("packageinstaller", mxpi_is_available)
 
-        # self.actions["middle_click"] = self.actions["synaptic"] 
+        # self.actions["middle_click"] = self.actions["synaptic"]
         # set "middle_click"
-        
+
         if mxpi_is_available:
             self.actions["middle_click"] = self.actions["packageinstaller"]
         elif synaptic_is_available:
             self.actions["middle_click"] = self.actions["synaptic"]
-        
-        # Check and set visibility for unattended-upgrades log
-        unattended_log_exists = self.files_exist("/var/log/unattended-upgrades", "unattended-upgrades.log*")
-        self.set_action_visble("auto_update_log", unattended_log_exists)
-        
-        # Check and set visibility for unattended-upgrades DPKG log
-        dpkg_log_exists = self.files_exist("/var/log/unattended-upgrades", "unattended-upgrades-dpkg.log*")
-        self.set_action_visble("auto_update_dpkg_log", dpkg_log_exists)
 
-        
+        # Check and set visibility for unattended-upgrades log
+
         # build context menu entries
         hide_until_updates_available = QAction(self.menu)
         hide_until_updates_available.setText(_("Hide until updates available"))
@@ -1360,6 +1353,8 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         self.activated.connect(self.tray_icon_activated)
 
+        self.enable_auto_upgrade_log()
+
 
     #---------------------------------------------------------------
     # update UpdaterSettings dialog if running
@@ -1369,16 +1364,16 @@ class SystemTrayIcon(QSystemTrayIcon):
     SETTINGS_OBJECT_IFACE = "org.mxlinux.UpdaterSettings"
     was update_systray_icon
     """
-    
+
     def update_settings_dialog(self, key, value):
         prefix = 'no-dbus-callback@'
-    
+
         if not key == 'hide_until_upgrades_available':
             return
 
         if key == 'hide_until_upgrades_available':
             key = f'{prefix}{key}'
-    
+
         if isinstance(value, str):
             if not value.strip():
                 return
@@ -1393,27 +1388,27 @@ class SystemTrayIcon(QSystemTrayIcon):
         try:
             # Connect to session bus
             bus = dbus.SessionBus()
-            
+
             try:
                 # dbus proxy object
                 proxy = bus.get_object(SETTINGS_OBJECT_NAME, SETTINGS_OBJECT_PATH)
-                
+
                 # dbus interface
                 interface = dbus.Interface(proxy, SETTINGS_OBJECT_IFACE)
-                
+
                 # debus method call to update settings dialog with key/value
                 if key == 'hide_until_upgrades_available':
                     key = "hide"
                 #print(f"interface.SetValue(str({key}), str({value}))")
                 interface.SetValue(str(key), str(value))
-            
+
             except dbus.exceptions.DBusException as e:
                 # updater settings dialog not running
                 #print(f"UpdaterSettings dialog not running.: {e}")
                 #print(f"UpdaterSettings dialog not running.")
                 logger.debug("[update_settings_dialog] UpdaterSettings appears to be not running")
                 pass
-        
+
         except Exception as e:
             print(f"Unexpected D-Bus error: {e}")
             pass
@@ -1435,7 +1430,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.qsettings.sync()
         self.update_settings_dialog("hide_until_upgrades_available", True)
         pass
-        
+
     def _onLocalQuit(self):
         self.handleQuit()
         QSystemTrayIcon.hide(self)
@@ -1455,7 +1450,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         release_runtime_lock(self.run_time_path)
         logger.debug("SystemTrayIcon is cleaning up...")
- 
+
     def get_app_name_from_path(self, fullpath: str) -> str:
         """
         fullpath: absolute path to a .desktop file,
@@ -1471,7 +1466,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         def launcher():
 
             self._clean_notifications()
-           
+
             exe = self.registry[tag_name][2]
             # action with lock wrapper
             action = UPDATER_ACTION_RUN
@@ -1509,7 +1504,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                 left_click = "synaptic"
             elif left_click == "package_installer":
                 left_click = "packageinstaller"
-                
+
             action = self.actions.get(left_click)
             if action:
                 action.trigger()
@@ -1535,7 +1530,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             and len(obj) == 4
             and all(isinstance(x, int) for x in obj)
         )
-    
+
     def load_state(self) -> Optional[Dict[str, Any]]:
         logger.debug("loading state file '%s'", STATE_FILE)
         try:
@@ -1548,39 +1543,110 @@ class SystemTrayIcon(QSystemTrayIcon):
             return None
 
     def validate_state(self, state: Dict[str, Any]) -> bool:
-            
+
         try:
             full_upgrades = state["upgrades-available"]["full-upgrade"]
             basic_upgrades = state["upgrades-available"]["basic-upgrade"]
         except (KeyError, TypeError) as e:
             logger.info("State file missing required keys or wrong structure: %s", e)
             return False
-    
+
         if not self.is_valid_upgrades_tuple(full_upgrades):
             logger.warning("Invalid full-upgrades tuple")
             return False
-    
+
         if not self.is_valid_upgrades_tuple(basic_upgrades):
             logger.warning("Invalid basic-upgrades tuple")
             return False
-   
+
         return True
-    
+
 
 
     def files_exist(self, directory, pattern):
         """
         Check if files matching the glob pattern exist in the specified directory.
-       
+
         """
         # Construct the full search path
         search_path = os.path.join(directory, pattern)
-        
+
         # Use glob to find matching files
         matching_files = glob.glob(search_path)
-        
+
         # Return True if any files match the pattern
         return len(matching_files) > 0
+
+    def is_unattended_upgrade_enabled(self) -> bool:
+        """
+        Check if unattended upgrade is enabled
+
+        Returns:
+            bool: True if unattended upgrade is enabled
+        """
+        me = "is_unattended_upgrade_enabled@Settings"
+        try:
+            cmd = ['apt-config', 'shell', 'opt', 'APT::Periodic::Unattended-Upgrade/b']
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            # match the single-quoted apt-config shell output
+            output = result.stdout.strip()
+            return output == "opt='true'"
+
+        except subprocess.CalledProcessError:
+            return False
+
+    def auto_upgrades_logs_available(self) -> bool:
+        """
+        Check if unattended log files are available
+
+        Returns:
+            bool: True if log files exist, False otherwise
+        """
+        try:
+            # Run the command using subprocess
+            cmd = [
+                '/usr/bin/pkexec',
+                '/usr/libexec/mx-updater/updater_auto_upgrades_log_view',
+                '--list'
+                ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+
+            # strip whitespace and check if the output is non-empty
+            return bool(result.stdout.strip())
+
+        except subprocess.CalledProcessError:
+            # command failed
+            return False
+
+        except subprocess.TimeoutExpired:
+            # Command timed out
+            return False
+
+        except FileNotFoundError:
+            # Either pkexec or the executable is not found
+            return False
+
+    def enable_auto_upgrade_log(self):
+        """
+        Make auto upgrade les menu entries visible
+        """
+        # check log view menu entry exists:
+        if not (self.actions.get("auto_update_log") or self.actions.get("auto_update_dpkg_log")):
+            return
+
+        # Check and set visibility for unattended-upgrades log
+        enable_auto_update_logs = (self.is_unattended_upgrade_enabled()
+                                or self.auto_upgrades_logs_available())
+
+        self.set_action_visble("auto_update_log", enable_auto_update_logs)
+
+        self.set_action_visble("auto_update_dpkg_log", enable_auto_update_logs)
 
 
 
@@ -1592,7 +1658,7 @@ def make_notification(title, message, icon=None, timeout=10_000):
     n = notify2.Notification(title, message, icon)
     n.set_timeout(timeout)
 
-    # original closed callback 
+    # original closed callback
     orig_cb = getattr(n, "_closed_callback", None)
 
     def _silent_closed(nid, reason):
@@ -1693,7 +1759,7 @@ def main(bus, logger):
      # Session D-Bus service
     #bus_name = dbus.service.BusName(TRAYICON_OBJECT_NAME, session_bus)
     service = SystemTrayService(session_bus, TRAYICON_OBJECT_PATH)
-       
+
     app = QApplication(sys.argv)
     app.setApplicationName("mx-updater")
 
@@ -1703,19 +1769,19 @@ def main(bus, logger):
 
     #service.quit_signal.connect(tray_icon.handleQuit)      # your custom cleanup
     #service.quit_signal.connect(app.quit)             # then exit
-    
+
     try:
         # Start the Qt event loop
         sys.exit(app.exec())
     finally:
         logger.debug("SystemTrayIcon has exited.")
 
- 
+
 def signal_handler(sig, frame):
     logger.debug("Received termination signal %r. Cleaning up...", sig)
     # any cleanup here ...
     QApplication.quit()
-    sys.exit(0) 
+    sys.exit(0)
 
 
 #---------------------
@@ -1731,7 +1797,7 @@ def _safe_closed_callback(nid, reason):
 notify2._closed_callback = _safe_closed_callback
 
 
-    
+
 def unhide_systray(bus):
     """
     Try to unhide Systray icon, if it is hidden.
@@ -1748,19 +1814,19 @@ def unhide_systray(bus):
     except Exception as e:
         print(f"Unexpected QSettings error: {e}")
         pass
-    
+
     try:
         # dbus proxy object
         proxy = bus.get_object(SETTINGS_OBJECT_NAME, SETTINGS_OBJECT_PATH)
         interface = dbus.Interface(proxy, SETTINGS_OBJECT_IFACE)
         interface.SetValue(str(key), str(val))
-    
+
     except dbus.exceptions.DBusException as e:
         # updater settings dialog not running
         #print(f"UpdaterSettings dialog not running.")
         logger.debug("[unhide_systray] UpdaterSettings appears to be not running")
         pass
-    
+
     except Exception as e:
         print(f"Unexpected D-Bus error: {e}")
         pass
@@ -1771,30 +1837,30 @@ def unhide_systray(bus):
         proxy = bus.get_object(TRAYICON_OBJECT_NAME, TRAYICON_OBJECT_PATH)
         interface = dbus.Interface(proxy, TRAYICON_OBJECT_IFACE)
         interface.SetValue(str(key), str(val))
-    
+
     except dbus.exceptions.DBusException as e:
         # updater settings dialog not running
         #print(f"UpdaterSettings dialog not running.")
         logger.debug("[update_settings_dialog] UpdaterSettings appears to be not running")
         pass
-    
+
     except Exception as e:
         print(f"Unexpected D-Bus error: {e}")
         pass
 
-   
 
-    
+
+
 if __name__ == "__main__":
 
-    
+
     #----------
     # D-Bus
     #----------
     # initialize the D-Bus main loop
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
-    
+
     # Check updater-systray icon is already running
     logger.debug("Trying to connected to session bus.")
     try:
@@ -1835,7 +1901,7 @@ if __name__ == "__main__":
         logger.error("Could not become primary owner (got %r), exiting.", result)
         sys.exit(1)
 
-    
+
     """
     # move into background - fork current process
     pid = os.fork()
@@ -1846,7 +1912,7 @@ if __name__ == "__main__":
     # child process
     os.setsid()
     """
-    
+
     # set signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
