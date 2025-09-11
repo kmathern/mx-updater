@@ -38,6 +38,11 @@ case "$1" in
 		  cp /usr/share/mx-updater/51unattended-upgrades-config \
 		     /etc/apt/apt.conf.d/51unattended-upgrades-config 2>/dev/null || :
 	fi
+
+	if  [ ! -f /etc/xdg/autostart/mx-updater-autostart.desktop   ] && \
+	    [  -f /usr/share/mx-updater/mx-updater-autostart.desktop ]; then
+	    cp /usr/share/mx-updater/mx-updater-autostart.desktop /etc/xdg/autostart/mx-updater-autostart.desktop
+	fi
 	
 	;;
 esac

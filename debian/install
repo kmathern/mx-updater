@@ -9,6 +9,7 @@ share/mx-updater     usr/share
 l10n/build/xdg/mx-updater.desktop            usr/share/applications
 l10n/build/xdg/mx-updater-settings.desktop   usr/share/applications
 l10n/build/xdg/mx-updater-autostart.desktop  etc/xdg/autostart
+l10n/build/xdg/mx-updater-autostart.desktop  usr/share/mx-updater
 
 dbus/59updater-system-monitor                 etc/apt/apt.conf.d
 dbus/org.mxlinux.UpdaterSystemMonitor.conf    usr/share/dbus-1/system.d
