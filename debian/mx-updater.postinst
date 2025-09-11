@@ -1,8 +1,14 @@
 #!/bin/bash
 
-#DEBHELPER#
-
 # postinst script for mx-updater
+
+if command -v py3compile >/dev/null 2>&1; then
+	py3compile -p mx-updater /usr/libexec/mx-updater  || true
+fi
+if command -v pypy3compile >/dev/null 2>&1; then
+	pypy3compile -p mx-updater /usr/libexec/mx-updater || true
+fi
+
 
 case "$1" in
   configure)  
@@ -41,7 +47,7 @@ case "$1" in
 
 	if  [ ! -f /etc/xdg/autostart/mx-updater-autostart.desktop   ] && \
 	    [  -f /usr/share/mx-updater/mx-updater-autostart.desktop ]; then
-	    cp /usr/share/mx-updater/mx-updater-autostart.desktop /etc/xdg/autostart/mx-updater-autostart.desktop
+	    cp /usr/share/mx-updater/mx-updater-autostart.desktop /etc/xdg/autostart/mx-updater-autostart.desktop  || true
 	fi
 	
 	;;

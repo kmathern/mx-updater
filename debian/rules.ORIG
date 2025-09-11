@@ -5,13 +5,13 @@
 
 override_dh_auto_clean:
 	$(MAKE) -C icons clean
-	$(MAKE) -C translations clean
+	$(MAKE) -C l10n clean
 	dh_auto_clean
 
 override_dh_auto_build:
 	bash scripts/build_version
 	$(MAKE) -C icons
-	$(MAKE) -C translations
+	$(MAKE) -C l10n
 	dh_auto_build
 
 override_dh_auto_install:
