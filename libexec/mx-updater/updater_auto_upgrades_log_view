@@ -5,27 +5,34 @@
 #
 OPT="$1" ;
 
-if  [ -f /usr/bin/mx-updater_unattended_upgrades_log_view ] && \
-    [ -x /usr/bin/mx-updater_unattended_upgrades_log_view ] && \
-    [ ! -L /usr/bin/mx-updater_unattended_upgrades_log_view ];
+if  [ ! -f /usr/bin/mx-updater_unattended_upgrades_log_view ] || \
+    [ ! -x /usr/bin/mx-updater_unattended_upgrades_log_view ] || \
+    [ -L /usr/bin/mx-updater_unattended_upgrades_log_view ];
 then
-    : pass
-else
+    # log viewer does not exists, is not executable, or is a symlink
     exit 1
 fi
 
 
 if [ "$OPT" = "--list" ]; then
-    # list log files
-    find /var/log/unattended-upgrades \
-	-type f \
-	-regextype egrep \
-	-regex  '.*unattended-upgrades(-dpkg)?.log.*'
+    # list log files if any
+    if [ ! -d /var/log/unattended-upgrades ] || \
+       [ ! -r /var/log/unattended-upgrades ] || \
+       [ -L /var/log/unattended-upgrades ];
+    then
+        # log dir does not exists, is not readable, or is a symlink
+        exit 0
+    else
+        # list log files
+        find /var/log/unattended-upgrades \
+        -type f \
+        -regextype egrep \
+        -regex  '/var/log/unattended-upgrades/unattended-upgrades(-dpkg)?.log.*'
+        exit 0
+    fi
+else
+    # run log viewer
+    /usr/bin/mx-updater_unattended_upgrades_log_view | /usr/bin/cat
     exit 0
 fi
-
-# run log view
-
-/usr/bin/mx-updater_unattended_upgrades_log_view | /usr/bin/cat
-
 exit 0
