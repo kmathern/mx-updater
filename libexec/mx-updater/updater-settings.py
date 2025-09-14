@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 
-# updater-pref.py
-
 import os
 import re
 import subprocess
@@ -174,6 +172,7 @@ class SettingsEditorDialog(QDialog):
         self.bus.publish(SETTINGS_OBJECT_NAME, self.service)
         self.dbus_call_back = True
 
+        self._init_done = False
 
         self._auto_upgrade_state_is_updating = False
 
@@ -183,6 +182,7 @@ class SettingsEditorDialog(QDialog):
         self.value_changed_signal.connect(self.update_setting_dialog)
 
         self.initUI()
+        
 
     def unattended_upgrade_current_state(self):
         """
@@ -358,6 +358,7 @@ class SettingsEditorDialog(QDialog):
 
         # flag to check if window has been shown
         self.first_resize = True
+        self._init_done = True
 
 
     def style_margins(self):
@@ -964,6 +965,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
         self.settings['upgrade_type'] = upgrade_type
         self.qsettings.setValue(f"Settings/upgrade_type", upgrade_type)
+        self.qsettings.sync()
 
         # Attempt to update the running apt-systray icon via D-Bus
         self.update_systray_icon('upgrade_type', upgrade_type)
@@ -977,13 +979,17 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
     #---------------------------------------------------------------
     def update_systray_icon(self, key, value):
+        me = "update_systray_icon"
+
+        if not self._init_done:
+            return
 
         if not self.dbus_call_back:
             self.dbus_call_back = True
             print(f"No dbus callback for: {key} = {value}")
             return
 
-        print(f"Try update_systray_icon via dbus: {key} = {value}")
+        logger.debug("[%s] Try to update systray icon via dbus with: %s=%s", me, key, value)
         try:
             # Connect to the session bus
             bus = dbus.SessionBus()
@@ -998,14 +1004,15 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
                 # method call to update systray icon settings with  key/value
                 interface.SetValue(str(key), str(value))
 
-            except dbus.exceptions.DBusException as service_error:
+            except dbus.exceptions.DBusException as e:
                 # handle systray icon is not running
-                #print(f"Systray icon not running: {service_error}")
-                print(f"Systray icon not running.")
+                #print(f"Systray icon not running: {e}")
+                logger.debug("[%s] Systray icon not running or dbus error.", me)
                 pass
 
         except Exception as e:
-            print(f"Unexpected D-Bus error: {e}")
+            #print(f"Unexpected D-Bus error: {e}")
+            logger.debug("[%s] Unexpected D-Bus error: %s", me. e)
 
 
     #---------------------------------------------------------------
@@ -1122,9 +1129,9 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
             logger.debug("toggle auto_upgrade state is: %s", checked)
             # state already set
             if current_state == checked:
-                logging.info(f"Auto-upgrade already set to {checked}.")
-                self.show_message("Info", "Auto-upgrade setting is already in the desired state. No changes made.",
-                                  QMessageBox.Icon.Information)
+                logging.info("Auto-upgrade already set to %r.", checked)
+                message = _("Auto-upgrade setting is already in the desired state. No changes made.")
+                self.show_message("Info", message, QMessageBox.Icon.Information)
                 return
 
             # try to apply new state
@@ -1134,24 +1141,27 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
             if success:
                 # state changed
-                self.show_message("Success", "Auto-upgrade setting updated successfully.",
-                                  QMessageBox.Icon.Information)
-
+                success = _("Success")
+                message = _("Auto-upgrade setting updated successfully.")
+                self.show_message(success, message, QMessageBox.Icon.Information)
+                self.update_systray_icon("auto_upgrade", str(success).lower())
             else:
                 # revert to previous state
                 self.auto_upgrade_checkbox.setChecked(current_state)
-                self.show_message("Failure", "Failed to update auto-upgrade setting.",
-                                  QMessageBox.Icon.Warning)
+                failure = _("Failure")
+                message = _("Failed to update auto-upgrade setting.")
+                self.show_message(failure, message, QMessageBox.Icon.Warning)
 
         except Exception as e:
-            logging.error(f"Toggle error: {e}")
+            logging.error("Toggle error: %r", e)
             # Revert to previous known good state
             current_state = self.is_unattended_upgrade_enabled()
             self.auto_upgrade_checkbox.setChecked(current_state)
 
             # Show error message to user
-            self.show_message("Error", f"An unexpected error occurred: {e}",
-                              QMessageBox.Icon.Critical)
+            error = _("Error")
+            message = _("An unexpected error occurred:")
+            self.show_message(error, f"{message} {e}", QMessageBox.Icon.Critical)
 
         finally:
             # reset state_is_updating flag
@@ -1177,7 +1187,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         """
         Apply the selected configuration
         """
-        print("[apply_auto_upgrade_checkbox] clicked")
+        logging.debug("[apply_auto_upgrade_checkbox] clicked")
         try:
             # Check if Polkit is available
             #if not self.check_and_confirm_polkit():
@@ -1202,10 +1212,15 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
         except subprocess.CalledProcessError as e:
             # Show error popup
+            title = _("Unattended Upgrades Configuration Failed")
+            message=_("Could not change automatic upgrades configuration")
+            command_failed= _("Command failed")
+            details=f"{command_failed} [{e.returncode}]: {str(e.stderr)} "
+
             self.show_error_popup(
-                title="Unattended Upgrades Configuration Failed",
-                message="Could not change automatic upgrades configuration",
-                details=f"Command failed [{e.returncode}]: {str(e.stderr)} "
+                title=title,
+                message=message,
+                details=details
             )
 
     def show_error_popup(self, title, message, details=None):
@@ -1225,23 +1240,29 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         error_dialog.exec()
 
     def on_wireframe_transparent_checkbox_toggled(self, checked):
+        me = "on_wireframe_transparent_checkbox_toggled"
+        logger.debug("[%s] toggled: %s", me, str(checked).lower())
         # store transparent icon selection into settings
         self.settings["wireframe_transparent"] = checked
         self.qsettings.setValue(f"Settings/wireframe_transparent", checked)
+        self.qsettings.sync()
         name = self.settings.get("icon_look")
         if name.startswith("wireframe"):
             if checked:
                 self.update_systray_icon("icon_look", f"{name}:transparent")
             else:
                 self.update_systray_icon("icon_look", f"{name}:non-transparent")
-        print(f"toggled wireframe_transparent: {checked}")
+
 
     def on_icon_radio_button_toggled(self, checked, label, name):
+        me = "on_icon_radio_button_toggled"
         if checked:
+            logger.debug("[%s] toggled %s: %s", me, name, str(checked).lower())
             self.selected_icons["icon_selected"] = name
             self.settings["icon_look"] = name
             self.qsettings.setValue(f"Settings/icon_look", name)
-            print(f"on_icon_radio_button_toggled -> selected: {name} : {label}")
+            self.qsettings.sync()
+
             if name.startswith("wireframe"):
                 self.wireframe_transparent_checkbox.setEnabled(True)
                 # Attempt to update the running UpdaterSystemTray icon via D-Bus
@@ -1273,6 +1294,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         # save use_dbus_notifications selection into settings dict
         self.settings["use_dbus_notifications"] = checked
         self.qsettings.setValue(f"Settings/use_dbus_notifications", checked)
+        self.qsettings.sync()
         print(f"toggled use_dbus_notifications: {checked}")
         self.update_systray_icon("use_dbus_notifications", checked)
 
@@ -1281,6 +1303,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         # save hide_until_upgrades_available selection into settings dict
         self.settings["hide_until_upgrades_available"] = checked
         self.qsettings.setValue("Settings/hide_until_upgrades_available", checked)
+        self.qsettings.sync()
         print(f"toggled hide_until_upgrades_available: {checked}")
         self.update_systray_icon("hide_until_upgrades_available", checked)
 
