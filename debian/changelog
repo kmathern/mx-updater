@@ -1,11 +1,14 @@
 mx-updater (25.09.03mx25) mx; urgency=medium
 
+  * adjust tray icon visibilty checks
   * restore autostart desktop entry
-  * fix to enable automatic upgrade logs due to restrictive read permissions
+  * keep systray icon hidden with autostart if set in preferences
+  * fix enable automatic upgrade logs due to restrictive read permissions
   * add pycache stanzas to postinst and prerm
   * add licence.html file to install
+  * add translations for strings
 
- -- fehlix <fehlix@mxlinux.org>  Thu, 11 Sep 2025 06:53:54 -0400
+ -- fehlix <fehlix@mxlinux.org>  Sun, 14 Sep 2025 12:39:18 -0400
 
 mx-updater (25.09.02mx25) mx; urgency=medium
 
