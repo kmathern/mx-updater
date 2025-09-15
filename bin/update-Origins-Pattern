@@ -230,9 +230,9 @@ for k, v in relspins.items():
         d_print(f"Debug: check['n']: {check['n']}") 
         if 'n' in check:
             if debian_codename():
-                origins[rel]['enabled'] = False
                 d_print(f"Debug: list(debian_codename()): {debian_codename()}")
                 for n in debian_codename():
+                    origins[rel]['enabled'] = False
                     d_print(f"Debug: for n in list(debian_codename()): {n}")
                     d_print(f"Debug: if n in check('n'): if n in {check['n']}")
                     if n in check['n']:
