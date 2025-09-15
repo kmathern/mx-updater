@@ -132,7 +132,7 @@ pol = run(['apt-cache', 'policy'], capture_output=True,text=True).stdout
 lines = [ x.strip() for x in pol.splitlines() ]
 
 # keep pin-priority line and release line
-lines = [ x for x in lines if x[0].isdigit() or x.startswith('release') ]
+lines = [ x for x in lines if x[0].isdigit() or (x.startswith('-') and x[1].isdigit()) or x.startswith('release') ]
 
 # remove leading 'release' with release lines
 lines = [ re.sub('^release ','',x).strip() for x in lines ]
