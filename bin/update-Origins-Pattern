@@ -119,6 +119,8 @@ def debian_codename():
                 debian_codename = "trixie"
             elif dv == "14":
                 debian_codename = "forky"
+            elif dv == "15":
+                debian_codename = "duke"
             else:
                 debian_codename = dv
     except FileNotFoundError as e:
