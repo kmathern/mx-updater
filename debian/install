@@ -5,10 +5,13 @@ lib/mx-updater       usr/lib
 libexec/mx-updater   usr/libexec
 polkit/actions       usr/share/polkit-1
 share/mx-updater     usr/share
+share/doc            usr/share
 
 l10n/build/xdg/mx-updater.desktop            usr/share/applications
 l10n/build/xdg/mx-updater-settings.desktop   usr/share/applications
 l10n/build/xdg/mx-updater-autostart.desktop  etc/xdg/autostart
+l10n/build/xdg/mx-updater-autostart.desktop  usr/share/mx-updater
+version/build/version.py                     usr/libexec/mx-updater/version
 
 dbus/59updater-system-monitor                 etc/apt/apt.conf.d
 dbus/org.mxlinux.UpdaterSystemMonitor.conf    usr/share/dbus-1/system.d

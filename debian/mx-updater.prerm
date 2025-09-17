@@ -1,17 +1,11 @@
-#!/bin/bash
-
-#DEBHELPER#
+#!/bin/sh
+set -e
 
 # prerm script for mx-updater
 
-set -e
-
-case "$1" in
-  purge|remove)  
-          rm -r /usr/lib/mx-updater/modules/__pycache__  2>/dev/null  || :      
-          rm -r /usr/libexec/mx-updater/__pycache__  2>/dev/null  || :      
-          ;;
-          *)  :
-          ;;  
-esac
-exit 0
+if command -v py3clean >/dev/null 2>&1; then
+	py3clean -p mx-updater  || true
+else
+	dpkg -L  mx-updater | sed -En -e '/^(.*)\/(.+)\.py$/s,,rm "\1/__pycache__/\2".*,e' || true
+	find /usr/libexec/mx-updater/ -type d -name __pycache__ -empty -print0 | xargs --null --no-run-if-empty rmdir  || true
+fi

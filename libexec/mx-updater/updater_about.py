@@ -15,7 +15,22 @@ from PyQt6.QtGui import (
     QPalette, QColor
     )
 
-BUILD_VERSION='%VERSION%'
+BUILD_VERSION='@VERSION@'
+
+try:
+    MX_UPDATER_PATH = os.environ["MX_UPDATER_PATH"]
+except KeyError:
+    print("MX_UPDATER_PATH missing from environment, exiting")
+    sys.exit(1)
+
+sys.path.insert(0, MX_UPDATER_PATH)
+
+try:
+    from version.version import Version
+except ImportError:
+    class Version:
+        version = BUILD_VERSION  # Fallback version
+
 
 # localization
 import gettext
@@ -26,10 +41,12 @@ gettext.textdomain(LOCALE_DOMAIN)
 _ = gettext.gettext 
 
 
-class AptnotifierAbout():
+class UpdaterAbout():
 
     def __init__(self):
         os.environ["QT_LOGGING_RULES"] = "qt.qpa.xcb.warning=false"
+        self.version = Version.version
+        print(f"[About] Version: {self.version}")
 
         self.__about_viewer = self.about_viewer
 
@@ -50,6 +67,7 @@ class AptnotifierAbout():
         from shutil import which
         self.__about_viewer = list(filter( lambda x: which(x), viewer_list))[0]
         return self.__about_viewer
+
 
 
     def About(self, aboutBox):
@@ -84,6 +102,7 @@ class AptnotifierAbout():
         cmd = "dpkg-query -f ${Version} -W mx-updater".split()
         pkg_version = run(cmd, capture_output=True, text=True).stdout.strip()
         updater_version = pkg_version if pkg_version else BUILD_VERSION
+        updater_version = self.version
 
         # link colors for dark:
         # link_color = "#58a6ff"  # soft blue
@@ -213,7 +232,7 @@ class AptnotifierAbout():
             #print(f"light theme")
         
         aboutBox = QMessageBox()
-        about = AptnotifierAbout()
+        about = UpdaterAbout()
         about.About(aboutBox)
         aboutBox.show()
         sys.exit(app.exec())
@@ -253,7 +272,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("mx-updater")
-    about = AptnotifierAbout()
+    about = UpdaterAbout()
 
     
     if about.is_dark_theme():

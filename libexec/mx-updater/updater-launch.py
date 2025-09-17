@@ -141,7 +141,7 @@ if args.restart:
 # retrieve startup delay and validate
 settings = QSettings('MX-Linux', 'mx-updater')
 try:
-    saved_delay = settings.value('Settings/start_at_login_delay', default_delay, type=int)
+    saved_delay = settings.value('Settings/start_at_login_delay', type=int)
 
     logger.debug("AutoStart saved_delay settings value is '%s'", saved_delay)
 
@@ -175,6 +175,7 @@ delay = max(0, delay)
 # delay launch if autostart is specified
 if args.autostart:
     if delay > 0:
+        launch_args += ['--autostart'] 
         logger.info(f"MX Updater autostart is waiting {delay} seconds before starting")
         time.sleep(delay)
 
@@ -217,6 +218,7 @@ while True:
         break
     except KeyboardInterrupt:
         break
+
 #logger.info("MX Updater systray icon finished,  exit(%s)" % ret )
 
 sys.exit(ret)
