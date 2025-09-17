@@ -7,8 +7,10 @@ import glob
 import stat
 from pathlib import Path
 
+BUILD_VERSION='@VERSION@'
 
-# Check root early. And do't let MX Updater run as root
+
+# Check root early. And don't let MX Updater run as root
 if os.getuid() == 0:
     print("MX Updater should not be run as root. Please run it in user mode.")
     sys.exit(1)
@@ -96,6 +98,9 @@ except KeyError:
     sys.exit(1)
 
 sys.path.insert(0, MX_UPDATER_PATH)
+
+from version.version import VersionMonitor
+
 
 #----------
 import subprocess
@@ -263,6 +268,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.service = service
 
         me = "__init__"
+        self.version_monitor = VersionMonitor('mx-updater')
+
+        self.running_version = self.version_monitor.running_version
+        self.initial_installed_version  = self.version_monitor.initial_installed_version
+
+        logger.info(f"[%s] Running version: %s", me, self.running_version)
+        logger.info(f"[%s] Initial installed version: %s", me, self.initial_installed_version )
+
         self.initialized = False
         self._lock = threading.Lock()
 
@@ -310,7 +323,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._settings["hide_until_upgrades_available"] =  self.qsettings.value("Settings/hide_until_upgrades_available", False)
 
 
-        
+
         # try load state
         with self._lock:
             loaded_state = self.load_state()
@@ -450,7 +463,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         #hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
         #hide_until_upgrades_available = str(hide_until_upgrades_available).lower() in ('true')
         #logger.debug("[%s] hide_until_upgrades_available is %s", me, hide_until_upgrades_available)
-        
+
         #self._apply_tray_visibility(not hide_until_upgrades_available)
         #self.setVisible(not hide_until_upgrades_available)
 
@@ -1012,7 +1025,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         print(f"upgrade_type is '{upgrade_type}' type={type(upgrade_type)}")
         if upgrade_type == 'full-upgrade':
             logger.debug("[%s] Signal received for current upgrade-type is '%s'", me, upgrade_type)
-        else:    
+        else:
             #if upgrade_type == 'basic-upgrade':
             print(f"upgrade_type is '{upgrade_type}' type={type(upgrade_type)}")
             logger.debug("[%s] Signal ignored (not)- current upgrade-type is '%s'", me, upgrade_type)
@@ -1041,6 +1054,15 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         #if upgrade_type not in  ['basic-upgrade', 'upgrade']:
         #    return
+
+        # Check if version changed
+        if self.version_monitor.check_version_change():
+            # trigger  restart function
+            #self.restart_application()
+            restart = self.actions.get("updater_restart")
+            if restart:
+                restart.trigger()
+                return
 
         self.update_apt_icon("basic-upgrade", basic_upgrades_available)
 
@@ -1110,7 +1132,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                 if value.startswith("wireframe"):
                     logger.info("[%s] transparent value %s", me, value)
                     icon_look, _, transparent = value.partition(':')
-                    
+
                     logger.info("[%s] icon_look transparent  %s %s", me, icon_look, transparent)
                     transparent = transparent == "transparent"
                     logger.info("[%s] itransparent  %s ", me, transparent)
@@ -1118,7 +1140,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                     self.qsettings.sync()
                     qtransparent = self.qsettings.value('Settings/wireframe_transparent')
                     logger.info("[%s] qtransparent  %s ", me, qtransparent)
-                    
+
                 self._settings['icon_look'] = icon_look
                 # TODO: needs update_apt_icon
                 logger.info("[%s] set_icon_look()", me)
@@ -1169,7 +1191,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     """
 
 
-    
+
     def set_tooltip(self):
 
         me = "set_tooltip"
@@ -1192,7 +1214,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         full_upgrades_available = self._state.get("upgrades-available",{}).get('full-upgrade', (0, 0, 0, 0))[0:2]
         basic_upgrades_available = self._state.get("upgrades-available",{}).get('basic-upgrade', (0, 0, 0, 0))[0:2]
 
-            
+
 
         # plural form
         total_available = ngettext(
@@ -1249,7 +1271,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.debug("[%s] self.qsettings.value('Settings/hide_until_upgrades_available', False) is %r", me, value)
         hide_until_upgrades_available = str(value).lower() in ('true')
         logger.debug("[%s] hide_until_upgrades_available is %r", me, hide_until_upgrades_available)
-        
+
         if total_updates == 0:
             tooltip_available = _("No updates available")
             self._clean_notifications()
@@ -1261,11 +1283,11 @@ class SystemTrayIcon(QSystemTrayIcon):
         else:
             if self._icon_some:
                 set_icon = self._icon_some
-            
+
         if is_unattended_upgrade_enabled:
             is_basic = upgrade_type == 'basic-upgrade'
             is_full = upgrade_type == 'full-upgrade'
-            
+
             if is_basic:
                 do_notify = False
                 do_hide = True
@@ -1293,8 +1315,8 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.setToolTip(tooltip)
 
 
-        if set_icon:    
-            logger.debug("[%s] setIcon(QIcon('%s')", me, set_icon) 
+        if set_icon:
+            logger.debug("[%s] setIcon(QIcon('%s')", me, set_icon)
             self.setIcon(QIcon(set_icon))
 
         value = self.qsettings.value('Settings/hide_until_upgrades_available', False)
@@ -1323,7 +1345,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         if tuple(new_upgrades_available) == tuple(self._notified_upgrades):
            do_notify = False
-        
+
         logger.debug("[%s] ##############################################", me)
         logger.debug("[%s] do_notify is : %r", me, do_notify)
         if do_notify and use_dbus_notifications:
@@ -1353,18 +1375,18 @@ class SystemTrayIcon(QSystemTrayIcon):
         icon_some = icons.get("icon_some")
         icon_none = icons.get("icon_none")
         wireframe_transparent = self.qsettings.value('Settings/wireframe_transparent')
-        logger.info("[%s] self.qsettings.value('Settings/wireframe_transparent') : %s [%s]", me, wireframe_transparent, type(wireframe_transparent)) 
+        logger.info("[%s] self.qsettings.value('Settings/wireframe_transparent') : %s [%s]", me, wireframe_transparent, type(wireframe_transparent))
         #wireframe_transparent = self._settings.get('wireframe_transparent', "true")
-        #logger.info("[%s] self._settings.get('wireframe_transparent') : %s [%s]", me, wireframe_transparent, type(wireframe_transparent)) 
+        #logger.info("[%s] self._settings.get('wireframe_transparent') : %s [%s]", me, wireframe_transparent, type(wireframe_transparent))
         wireframe_transparent = str(wireframe_transparent).lower() in ['true', 'on', '1']
-        logger.info("[%s] self.qsettings.value('Settings/wireframe_transparent') : %s [%s]", me, wireframe_transparent, type(wireframe_transparent)) 
+        logger.info("[%s] self.qsettings.value('Settings/wireframe_transparent') : %s [%s]", me, wireframe_transparent, type(wireframe_transparent))
 
         if icon_look.startswith('wireframe') and wireframe_transparent:
             icon_none = icons.get('icon_none_transparent', icon_none)
 
         self._icon_none = icon_none
         self._icon_some = icon_some
-        
+
         # (upgraded, newly_installed)
         upgraded, newly_installed = self._state.get("upgrades-available",{}).get(upgrade_type,(0, 0, 0, 0))[0:2]
         full_upgrades_available = self._state.get("upgrades-available",{}).get('full-upgrade', (0, 0, 0, 0))[0:2]
@@ -1384,9 +1406,9 @@ class SystemTrayIcon(QSystemTrayIcon):
             and full_upgrades_available == basic_upgrades_available
             ):
             set_icon = self._icon_none
-            
-        if set_icon:    
-            logger.debug("[%s] setIcon(QIcon('%s')", me, set_icon) 
+
+        if set_icon:
+            logger.debug("[%s] setIcon(QIcon('%s')", me, set_icon)
             self.setIcon(QIcon(set_icon))
 
 
@@ -1791,12 +1813,12 @@ class SystemTrayIcon(QSystemTrayIcon):
             bool: True if log files exist, False otherwise
         """
         me = "auto_upgrades_logs_available"
-        
+
         log_dir = "/var/log/unattended-upgrades"
 
         if not os.path.exists(log_dir):
             return False
-            
+
         if os.access(log_dir, os.R_OK):
              log_files_available = (
                     self.files_exist(log_dir, 'unattended-upgrades-dpkg.log*')
@@ -1805,7 +1827,7 @@ class SystemTrayIcon(QSystemTrayIcon):
                     )
              if log_files_available:
                 logger.debug("[%s] unattended-upgrades log exists.", me)
-                return True       
+                return True
 
         logger.debug("[%s] try with pkexec whether unattended-upgrades log exists.", me)
         try:
@@ -1861,7 +1883,6 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         logger.info("[%s] set visibility for auto_update_dpkg_log: %r", me, enable_auto_update_logs)
         self.set_action_visble("auto_update_dpkg_log", enable_auto_update_logs)
-
 
 
 def make_notification(title, message, icon=None, timeout=10_000):

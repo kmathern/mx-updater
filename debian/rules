@@ -1,21 +1,17 @@
 #!/usr/bin/make -f
 
 %:
+	#dh $@ --with python3 --buildsystem=pybuild
 	dh $@ --with python3
 
-override_dh_auto_clean:
-	$(MAKE) -C icons clean
-	$(MAKE) -C l10n clean
-	dh_auto_clean
-
 override_dh_auto_build:
-	bash scripts/build_version
 	$(MAKE) -C icons
 	$(MAKE) -C l10n
+	$(MAKE) -C version
 	dh_auto_build
 
-override_dh_auto_install:
-	dh_auto_install
-
-override_dh_builddeb:
-	dh_builddeb -- -Z xz
+override_dh_clean:
+	$(MAKE) -C icons clean
+	$(MAKE) -C l10n clean
+	$(MAKE) -C version clean
+	dh_clean

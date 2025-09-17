@@ -1,3 +1,9 @@
+mx-updater (25.09.04mx25) mx; urgency=medium
+
+  * add restart after version change
+
+ -- fehlix <fehlix@mxlinux.org>  Wed, 17 Sep 2025 07:01:24 -0400
+
 mx-updater (25.09.03mx25) mx; urgency=medium
 
   * adjust tray icon visibilty checks

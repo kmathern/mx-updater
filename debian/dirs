@@ -1,6 +1,7 @@
 etc/xdg/autostart
 usr/bin
 usr/libexec/mx-updater
+usr/libexec/mx-updater/version
 usr/lib/mx-updater
 usr/lib/mx-updater/actions
 usr/lib/mx-updater/bin
