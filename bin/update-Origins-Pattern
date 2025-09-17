@@ -209,6 +209,8 @@ for k, v in relspins.items():
             origins[rel]['enabled'] = False
         if 'c' in check and check['c'] =='test':
             origins[rel]['enabled'] = False
+        if 'n' in check and check['n'] !=debian_codename():
+            origins[rel]['enabled'] = False
 
     # Disable Unattended Upgrades from Debian backports repos
     if 'o' in check and check['o'] == 'Debian Backports':
