@@ -52,4 +52,4 @@ random_sleep
 check_power || exit 0
 
 # run daily job
-exec /usr/lib/apt-notifier/apt.systemd.daily
+exec /usr/lib/mx-updater/apt.systemd.daily
