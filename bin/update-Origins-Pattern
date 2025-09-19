@@ -35,11 +35,11 @@ from subprocess import run
 import argparse
 import hashlib
 
-# defaults    
+# defaults
 default_output = '/etc/apt/apt.conf.d/51unattended-upgrades-origins'
 prog="update-Origins-Pattern"
 
-# usage 
+# usage
 usage=f" {prog} [<file>|options]"
 description = """
 
@@ -48,7 +48,7 @@ repos with the exceptions of the Debian Backports and Debian Experimental
 repos - and also the MX testrepo if enabled.
 """
 help_file = f"""
-File to be updated. Typically this would be the {default_output} 
+File to be updated. Typically this would be the {default_output}
 file but can be any file user has read/write permissions to.
 
 If no file argument provided, output will be written to stdout.
@@ -61,16 +61,16 @@ update the Origins-Pattern in the file {default_output}.
 parser = argparse.ArgumentParser(
             prog=prog,
             usage=usage,
-            description=description 
+            description=description
             )
 
 # add long and short argument
 parser.add_argument("file", help=help_file, type=str, nargs='?',default='stdout')
 parser.add_argument("-d", "--default", help=help_default, action="store_true" )
 
-# parse command line arguments 
+# parse command line arguments
 args = parser.parse_args()
-    
+
 # check arguments
 if args.file == 'stdout' and len(sys.argv) == 1:
     output = args.file
@@ -87,8 +87,8 @@ def d_print(text=''):
     """
     simple debug printer helper
     """
-    
-    try: 
+
+    try:
         debug_me = os.getenv('DEBUG_ME')
     except:
         debug_me = False
@@ -98,34 +98,27 @@ def d_print(text=''):
 # 'debug' prints
 d_print(f"Debug: Will write Origins-Pattern into: '{output}'")
 
+# distro_codename detection borrowed from unattended-upgrades script:
+# no py3 lsb_release in debian :/
+DISTRO_CODENAME = ""  # type: str
 
-# check debian codename
-# based on get_distro_codename() used within unattended-upgrades script
-def debian_codename():
+
+def init_distro_info():
+    global DISTRO_CODENAME
+    DISTRO_CODENAME = subprocess.check_output(
+        ["lsb_release", "-c", "-s"], universal_newlines=True).strip()
+
+def is_integer(s):
     try:
-        with open("/etc/debian_version","r") as f:
-            dv =  f.read().splitlines()[0]
-            dv = dv.split(".")[0]
-            dv = dv.split("/")[0]
-            if dv == "9":
-                debian_codename = "stretch"
-            elif dv == "10":
-                debian_codename = "buster"
-            elif dv == "11":
-                debian_codename = "bullseye"
-            elif dv == "12":
-                debian_codename = "bookworm"
-            elif dv == "13":
-                debian_codename = "trixie"
-            elif dv == "14":
-                debian_codename = "forky"
-            elif dv == "15":
-                debian_codename = "duke"
-            else:
-                debian_codename = dv
-    except FileNotFoundError as e:
-        debian_codename = "n/a"
-    return debian_codename
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+# init global distro info
+init_distro_info()
+
+debian_codename = DISTRO_CODENAME
 
 # read current apt policy
 pol = run(['apt-cache', 'policy'], capture_output=True,text=True).stdout
@@ -134,7 +127,7 @@ pol = run(['apt-cache', 'policy'], capture_output=True,text=True).stdout
 lines = [ x.strip() for x in pol.splitlines() ]
 
 # keep pin-priority line and release line
-lines = [ x for x in lines if x[0].isdigit() or (x.startswith('-') and x[1].isdigit()) or x.startswith('release') ]
+lines = [ x for x in lines if is_integer(x.split()[0]) or x.startswith('release') ]
 
 # remove leading 'release' with release lines
 lines = [ re.sub('^release ','',x).strip() for x in lines ]
@@ -167,7 +160,7 @@ for k, v in relspins.items():
     rel = rel.strip(',')
 
     # components handling for MX Repositories: keep components
-    # needed to disable MX testrepo 
+    # needed to disable MX testrepo
     if  'o=MX repository' in rel:
         remove_components = False
     else:
@@ -194,30 +187,37 @@ for k, v in relspins.items():
         origins[rel]['pins'][pin] = 'x'
 
     """
-    Note: 
-    MX repository for testrepo and experimental temp repo do get identified
+    Note:
+    MX repository for testrepo, temp and ahs-staging do get identified
     by code'n'ame and and 'c'omponents, resp.:
-    MX test-repo  "o=MX repository,a=mx,n=buster,l=MX repository,c=test"
-    MX temp-repo  "o=MX repository,a=mx,n=temp,l=MX repository,c=main"
+    MX test-repo   "o=MX repository,a=mx,n=trixie,l=MX repository,c=test"
+    MX temp-repo   "o=MX repository,a=mx,n=temp,l=MX repository,c=main"
+    MX ahs-staging "o=MX repository,a=mx,n=trixie,l=MX repository,c=ahs-staging"
     """
-    # use 'check' dictionary to find origin lines to be disabled 
+    # use 'check' dictionary to find origin lines to be disabled
     check = origins[rel]['dict']
 
-    # Disable Unattended Upgrades from MX temp- and test-repos
-    if 'o' in check and check['o'] == 'MX repository':
-        if 'n' in check and check['n'] == 'temp':
+    # Disable Unattended Upgrades with components not 'main', 'ahs', or 'non-free',
+    # i.e disables test, temp and ahs-staging:
+    if check.get('o') == 'MX repository':
+        if check.get('n') == 'temp':
             origins[rel]['enabled'] = False
-        if 'c' in check and check['c'] =='test':
+        if check.get('c') not in ('main', 'ahs', 'non-free'):
             origins[rel]['enabled'] = False
-        if 'n' in check and check['n'] !=debian_codename():
+        if check.get('n') and check.get('n') != debian_codename:
             origins[rel]['enabled'] = False
 
     # Disable Unattended Upgrades from Debian backports repos
-    if 'o' in check and check['o'] == 'Debian Backports':
+    if check.get('o') == 'Debian Backports':
+        origins[rel]['enabled'] = False
+    if check.get('o') == 'Debian Backports':
         origins[rel]['enabled'] = False
 
     # Disable Unattended Upgrades from Debian experimental repos
-    if 'o' in check and check['o'] == 'Debian Experimental':
+    if check.get('o') == 'Debian Experimental':
+        origins[rel]['enabled'] = False
+    if ( check.get('o') == 'Debian' and
+         check.get('a') == 'experimental'):
         origins[rel]['enabled'] = False
 
     # Disable Unattended Upgrades from Debian Multimedia repos
@@ -228,23 +228,17 @@ for k, v in relspins.items():
     Disable Unattended Upgrades from Debian repos with Debian releases
     other than the running one is based upon.
     """
-    if 'o' in check and check['o'] == 'Debian':
-        d_print(f"Debug: rel: {rel}") 
-        d_print(f"Debug: debian_codename(): {debian_codename()}") 
-        d_print(f"Debug: check['n']: {check['n']}") 
-        if 'n' in check:
-            if debian_codename():
-                d_print(f"Debug: list(debian_codename()): {debian_codename()}")
-                for n in debian_codename():
-                    origins[rel]['enabled'] = False
-                    d_print(f"Debug: for n in list(debian_codename()): {n}")
-                    d_print(f"Debug: if n in check('n'): if n in {check['n']}")
-                    if n in check['n']:
-                        origins[rel]['enabled'] = True
+
+    if (check.get('o') == 'Debian' and check.get('n') 
+        and check.get('n') not in (
+            f"{debian_codename}",
+            f"{debian_codename}-updates",
+            f"{debian_codename}-security")):
+        origins[rel]['enabled'] = False
 
 d_print(json.dumps(origins, indent=4))
 
-# 
+#
 d_print("Unattended-Upgrade::Origins-Pattern {")
 
 import datetime
@@ -284,7 +278,7 @@ if output == 'stdout':
     print(header + uuop)
     sys.exit(0)
 
-# calculate md5sum fomr exiting file
+# calculate md5sum from existing file
 try:
     with open(output,'r') as f:
         old_lines = f.read().splitlines()
