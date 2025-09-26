@@ -1,3 +1,10 @@
+mx-updater (25.09.05mx25~dev01) mx; urgency=medium
+
+  * add static 51unattended-upgrades-default-origins
+  * change update-Origin-Pattern to generate only non-Debian and non-MX origins by default
+
+ -- fehlix <fehlix@mxlinux.org>  Wed, 17 Sep 2025 07:01:24 -0400
+
 mx-updater (25.09.04mx25) mx; urgency=medium
 
   * add restart after version change
