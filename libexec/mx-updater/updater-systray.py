@@ -279,6 +279,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.initialized = False
         self._lock = threading.Lock()
 
+        self.is_detect_plasma = self.detect_plasma()
+        self.is_detect_fluxbox = self.detect_fluxbox()
+        self.disable_hide_until = (self.is_detect_fluxbox, self.is_detect_plasma)
+
         # on startup, try to acquire a lock
         self.run_time_path = acquire_runtime_lock()
         if self.run_time_path is None:
@@ -1339,7 +1343,8 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._apply_entry_visible("hide_until_updates_available", False)
         else:
             self._apply_entry_visible("view_and_upgrade", False)
-            self._apply_entry_visible("hide_until_updates_available", True)
+            if not any(self.disable_hide_until):
+                self._apply_entry_visible("hide_until_updates_available", True)
 
         #self._clean_notifications()
 
@@ -1418,11 +1423,13 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._apply_tray_visibility(True)
         else:
             self._apply_entry_visible("view_and_upgrade", False)
-            self._apply_entry_visible("hide_until_updates_available", True)
 
-            hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
-            hide_until_upgrades_available = str(hide_until_upgrades_available).lower() in ('true')
-            self._apply_tray_visibility(not hide_until_upgrades_available)
+            if not any(self.disable_hide_until):
+                self._apply_entry_visible("hide_until_updates_available", True)
+
+                hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
+                hide_until_upgrades_available = str(hide_until_upgrades_available).lower() in ('true')
+                self._apply_tray_visibility(not hide_until_upgrades_available)
 
 
     def initUI(self):
@@ -1883,6 +1890,73 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         logger.info("[%s] set visibility for auto_update_dpkg_log: %r", me, enable_auto_update_logs)
         self.set_action_visble("auto_update_dpkg_log", enable_auto_update_logs)
+
+
+    def detect_plasma(self):
+        # kde/plasma detection
+        plasma_indicators = [
+            os.environ.get('DESKTOP_SESSION', '').lower() == 'plasma',
+            os.environ.get('XDG_CURRENT_DESKTOP', '').lower() == 'kde',
+            os.environ.get('KDE_FULL_SESSION', '').lower() == 'true'
+        ]
+
+        if any(plasma_indicators):
+            return any(plasma_indicators)
+
+        # additional with process check
+        try:
+            plasma_shell_process = subprocess.run(
+                ['pgrep', '-x', 'plasmashell'],
+                capture_output=True,
+                text=True
+            )
+            plasma_indicators.append(plasma_shell_process.returncode == 0)
+        except Exception:
+            try:
+                plasma_shell_process = subprocess.run(
+                    ['pidof', '-q', 'plasmashell'],
+                    capture_output=True,
+                    text=True
+                )
+                plasma_indicators.append(plasma_shell_process.returncode == 0)
+            except Exception:
+                pass
+
+        return any(plasma_indicators)
+
+    def detect_fluxbox(self):
+        # fluxbox detection
+        fluxbox_indicators = [
+            os.environ.get('DESKTOP_SESSION', '').lower() == 'fluxbox',
+            os.environ.get('XDG_SESSION_DESKTOP', '').lower() == 'fluxbox',
+            os.environ.get('GDMSESSION', '').lower() == 'fluxbox'
+        ]
+
+        if any(fluxbox_indicators):
+            return any(fluxbox_indicators)
+
+        # additional with process check
+        try:
+            fluxbox_process = subprocess.run(
+                ['pgrep', '-x', 'fluxbox'],
+                capture_output=True,
+                text=True
+            )
+            fluxbox_indicators.append(fluxbox_process.returncode == 0)
+        except Exception:
+            try:
+                fluxbox_process = subprocess.run(
+                    ['pidof', '-q', 'fluxbox'],
+                    capture_output=True,
+                    text=True
+                )
+                fluxbox_indicators.append(fluxbox_process.returncode == 0)
+            except Exception:
+                pass
+
+        return any(fluxbox_indicators)
+
+
 
 
 def make_notification(title, message, icon=None, timeout=10_000):

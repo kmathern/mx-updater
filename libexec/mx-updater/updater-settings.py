@@ -176,13 +176,18 @@ class SettingsEditorDialog(QDialog):
 
         self._auto_upgrade_state_is_updating = False
 
+        self.is_detect_plasma = self.detect_plasma()
+        self.disable_hide_until = (self.is_detect_plasma,)
+        #self.is_detect_fluxbox = self.detect_fluxbox()
+        #self.disable_hide_until = (self.is_detect_fluxbox, self.is_detect_plasma)
+
         # Connect to the service's Qt signal (avoids DBus loopback)
         self.service.value_changed_qt.connect(self.on_value_changed)
         # Connect the PyQt signal to the update_tray_icon method
         self.value_changed_signal.connect(self.update_setting_dialog)
 
         self.initUI()
-        
+
 
     def unattended_upgrade_current_state(self):
         """
@@ -854,7 +859,8 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         other_options_layout.addLayout(timeout_layout)
         other_options_layout.addWidget(self.use_dbus_notifications_checkbox)
         other_options_layout.addLayout(start_8_login_layout)
-        other_options_layout.addWidget(self.hide_until_upgrades_available_checkbox)
+        if not any(self.disable_hide_until):
+            other_options_layout.addWidget(self.hide_until_upgrades_available_checkbox)
 
         other_options_frame.setLayout(other_options_layout)
         layout.addWidget(other_options_frame)
@@ -1440,6 +1446,72 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         # Get and print the current window title
         title = self.windowTitle()
         print(f"Current SettingsEditorDialog Title: {title}")
+
+
+    def detect_plasma(self):
+        # kde/plasma detection
+        plasma_indicators = [
+            os.environ.get('DESKTOP_SESSION', '').lower() == 'plasma',
+            os.environ.get('XDG_CURRENT_DESKTOP', '').lower() == 'kde',
+            os.environ.get('KDE_FULL_SESSION', '').lower() == 'true'
+        ]
+
+        if any(plasma_indicators):
+            return any(plasma_indicators)
+
+        # additional with process check
+        try:
+            plasma_shell_process = subprocess.run(
+                ['pgrep', '-x', 'plasmashell'],
+                capture_output=True,
+                text=True
+            )
+            plasma_indicators.append(plasma_shell_process.returncode == 0)
+        except Exception:
+            try:
+                plasma_shell_process = subprocess.run(
+                    ['pidof', '-q', 'plasmashell'],
+                    capture_output=True,
+                    text=True
+                )
+                plasma_indicators.append(plasma_shell_process.returncode == 0)
+            except Exception:
+                pass
+
+        return any(plasma_indicators)
+
+
+    def detect_fluxbox(self):
+        # fluxbox detection
+        fluxbox_indicators = [
+            os.environ.get('DESKTOP_SESSION', '').lower() == 'fluxbox',
+            os.environ.get('XDG_SESSION_DESKTOP', '').lower() == 'fluxbox',
+            os.environ.get('GDMSESSION', '').lower() == 'fluxbox'
+        ]
+
+        if any(fluxbox_indicators):
+            return any(fluxbox_indicators)
+
+        # additional with process check
+        try:
+            fluxbox_process = subprocess.run(
+                ['pgrep', '-x', 'fluxbox'],
+                capture_output=True,
+                text=True
+            )
+            fluxbox_indicators.append(fluxbox_process.returncode == 0)
+        except Exception:
+            try:
+                fluxbox_process = subprocess.run(
+                    ['pidof', '-q', 'fluxbox'],
+                    capture_output=True,
+                    text=True
+                )
+                fluxbox_indicators.append(fluxbox_process.returncode == 0)
+            except Exception:
+                pass
+
+        return any(fluxbox_indicators)
 
 
 def is_dark_theme():

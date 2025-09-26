@@ -1,10 +1,12 @@
-mx-updater (25.09.05mx25~dev01) mx; urgency=medium
+mx-updater (25.09.05mx25) mx; urgency=medium
 
   * add static 51unattended-upgrades-default-origins
   * change update-Origin-Pattern to generate only non-Debian and non-MX origins by default
   * fix assume-yes for automatically confirm package upgrades
+  * disable 'hide until updates available' option for Kde/Plasma
+  * disable right-click 'hide until updates available' for Fluxbox
 
- -- fehlix <fehlix@mxlinux.org>  Fri, 26 Sep 2025 15:08:03 -0400
+ -- fehlix <fehlix@mxlinux.org>  Fri, 26 Sep 2025 15:50:06 -0400
 
 mx-updater (25.09.04mx25) mx; urgency=medium
 
