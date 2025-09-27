@@ -30,6 +30,7 @@ def run_apt_cache_policy() -> str:
         print(f"Error running apt-cache policy: {e}", file=sys.stderr)
         sys.exit(1)
 
+
 def get_architectures() -> set:
     """
     Get the current and foreign architectures.
@@ -61,6 +62,7 @@ def get_architectures() -> set:
     except subprocess.CalledProcessError as e:
         print(f"Error getting architectures: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 def parse_apt_cache_policy(policy_output: str) -> List[Dict[str, str]]:
     """
@@ -107,12 +109,15 @@ def parse_apt_cache_policy(policy_output: str) -> List[Dict[str, str]]:
                 # Parse release attributes
                 attrs = {}
                 origin = {}
-                for attr in line[8:].split(','):
-                    if '=' in attr:
-                        k, v = attr.split('=')
-                        attrs[k] = v
-                        if k in ('o', 'a', 'n', 'l'):
-                            origin[k] = v
+
+                attrs.update({attr.split('=')[0]: attr.split('=')[1]
+                              for attr in line[8:].split(',')
+                              if '=' in attr})
+
+                origin.update({
+                    k: v for k, v in attrs.items()
+                    if k in ('o', 'a', 'n', 'l') and v
+                })
 
                 # Check if the architecture is in the allowed set
                 if attrs.get('b') in allowed_architectures:
@@ -157,7 +162,8 @@ def filter_repositories(repositories: List[Dict[str, str]],
     ]
 
 
-def generate_origins_pattern(repositories: List[Dict[str, str]]) -> str:
+def generate_origins_pattern(repositories: List[Dict[str, str]],
+                             no_uris: bool = False) -> str:
     """
     Generate the Unattended-Upgrade::Origins-Pattern stanza.
 
@@ -179,7 +185,7 @@ def generate_origins_pattern(repositories: List[Dict[str, str]]) -> str:
         origin = repo.get('origin', {})
 
         # Create origin pattern string
-        origin_pattern = f'"o={origin.get("o", "")},a={origin.get("a", "")},n={origin.get("n", "")},l={origin.get("l", "")}"'
+        origin_pattern = ','.join(f'{k}={origin[k]}' for k in ('o', 'a', 'n', 'l') if origin.get(k))
 
         # Avoid duplicates
         if origin_pattern in processed_origins:
@@ -187,58 +193,87 @@ def generate_origins_pattern(repositories: List[Dict[str, str]]) -> str:
         processed_origins.add(origin_pattern)
 
         # Add commented URI lines
-        for uri in repo.get('uris', []):
-            output.append(f"//  {repo['pin']} {uri}")
+        if not no_uris:
+            for uri in repo.get('uris', []):
+                output.append(f"//  {repo['pin']} {uri}")
 
         # Add origin pattern
-        output.append(f"    {origin_pattern};")
+        output.append(f'    "{origin_pattern}";')
 
     output.append("};")
 
     return "\n".join(output)
 
-def main():
-    # Argument parsing
+
+def positive_int(value):
+    try:
+        ivalue = int(value)
+        if ivalue < 1:
+            raise argparse.ArgumentTypeError(f"invalid non-positive int value: {value}")
+        return ivalue
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: {value}")
+
+
+def create_parser(default_file):
     parser = argparse.ArgumentParser(
         description="Update the Unattended-Upgrade::Origins-Pattern for Non-Debian and non-MX repositories"
     )
 
-    # Positional argument for output file
-    parser.add_argument(
-        'file',
-        nargs='?',
-        type=str,
-        help='File to be updated. If not provided, output will be written to stdout.'
-    )
-
-    # Optional arguments
+    # Origins option
     parser.add_argument(
         '-o', '--origins',
         nargs='+',
         default=['Debian', 'Debian Backports', 'MX repository'],
-        help='Origins to filter out (default: Debian, Debian Backports, MX repository)'
+        help="Origins to filter out (default: 'Debian', 'Debian Backports', 'MX repository')"
     )
 
     parser.add_argument(
         '-p', '--pin',
-        type=int,
+        type=positive_int,
         default=500,
-        help='Minimum positiv PIN to include (default: 500)'
+        help='Minimum positive PIN to include (default: 500)'
     )
 
     parser.add_argument(
-        '-d', '--default',
-        action='store_true',
-        help='Update the Origins-Pattern in the default file /etc/apt/apt.conf.d/51unattended-upgrades-origins'
+        '-n', '--no-uris',
+        help="Don't include pin/uri lines within the generated output",
+        action="store_true"
     )
 
-    # Parse arguments
+    # Mutually exclusive group for output
+    output_group = parser.add_mutually_exclusive_group()
+
+    output_group.add_argument(
+        '-d', '--default',
+        help=f'Use default file path (default: {default_file})',
+        action="store_true"
+    )
+    output_group.add_argument(
+        'file',
+        nargs='?',
+        help='Custom file to be updated'
+    )
+
+    return parser
+
+
+def main():
+    # Default output file path
+    default_file = '/etc/apt/apt.conf.d/51unattended-upgrades-origins'
+    parser = create_parser(default_file)
     args = parser.parse_args()
 
-    # Determine output file
-    output_file = args.file
+   # Determine output file
     if args.default:
-        output_file = '/etc/apt/apt.conf.d/51unattended-upgrades-origins'
+        # -d was used
+        output_file = default_file
+    elif args.file:
+        # Custom file specified
+        output_file = args.file
+    else:
+        # No output file specified
+        output_file = None  # stdout
 
     # Parse apt-cache policy input
     try:
@@ -255,14 +290,17 @@ def main():
     )
 
     # Generate origins pattern
-    origins_pattern = generate_origins_pattern(filtered_repos)
+    origins_pattern = generate_origins_pattern(
+        filtered_repos,
+        args.no_uris
+    )
 
     # Determine output destination
     if output_file:
         try:
             with open(output_file, 'w') as f:
                 f.write(origins_pattern)
-            print(f"Origins-Pattern written to {output_file}")
+            print(f"Origins-Pattern written to '{output_file}'")
         except PermissionError:
             print(f"[Errno 13] Permission denied: '{output_file}'", file=sys.stderr)
             sys.exit(1)
@@ -272,10 +310,6 @@ def main():
     else:
         # Output to stdout
         print(origins_pattern)
-
-    ##print(f"filter_origins=args.origins : {args.origins}")
-    ##from pprint import pprint
-    ##pprint(filtered_repos)
 
 if __name__ == '__main__':
     main()
