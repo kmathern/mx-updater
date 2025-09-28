@@ -1,310 +1,315 @@
 #!/usr/bin/python3
 
-"""
-This script is part of the mx-updater package.
+# script to generate Unattended-Upgrade::Origins-Pattern
+# part of MX Updater package
 
-Usage: update-Origins-Pattern [<file>|options]
 
-Update the Unattended-Upgrade::Origins-Pattern for most currently enabled
-repos with the exceptions of the Debian Backports and Debian Experimental
-repos.
-
-File:
-
-    File to be updated. Typically this would be the /etc/apt/apt.conf.d/
-    51unattended-upgrades-mx file but can be any file user has read/write
-    permissions to.
-
-    If no file argument provided, output will be written to stdout.
-
-Options:
-
-    -d, --default
-        Default to updating the Origins-Pattern in the
-        /etc/apt/apt.conf.d/51unattended-upgrades-origins file.
-
-    -h, --help
-        Show this help.
-
-"""
-
-import json
-import os, re, sys
-import subprocess
-from subprocess import run
 import argparse
-import hashlib
+import sys
+from datetime import datetime
+import subprocess
+from typing import List, Dict, Optional
 
-# defaults
-default_output = '/etc/apt/apt.conf.d/51unattended-upgrades-origins'
-prog="update-Origins-Pattern"
 
-# usage
-usage=f" {prog} [<file>|options]"
-description = """
-
-Update the Unattended-Upgrade::Origins-Pattern for most currently enabled
-repos with the exceptions of the Debian Backports and Debian Experimental
-repos - and also the MX testrepo if enabled.
-"""
-help_file = f"""
-File to be updated. Typically this would be the {default_output}
-file but can be any file user has read/write permissions to.
-
-If no file argument provided, output will be written to stdout.
-"""
-help_default = f"""
-update the Origins-Pattern in the file {default_output}.
-"""
-
-# initiate argparser
-parser = argparse.ArgumentParser(
-            prog=prog,
-            usage=usage,
-            description=description
-            )
-
-# add long and short argument
-parser.add_argument("file", help=help_file, type=str, nargs='?',default='stdout')
-parser.add_argument("-d", "--default", help=help_default, action="store_true" )
-
-# parse command line arguments
-args = parser.parse_args()
-
-# check arguments
-if args.file == 'stdout' and len(sys.argv) == 1:
-    output = args.file
-if args.file and len(sys.argv) == 2:
-    output = args.file
-    if not output.startswith('/'):
-        output = './' + output
-if args.default:
-    output = default_output
-    if not output.startswith('/'):
-        output = './' + output
-
-def d_print(text=''):
+def run_apt_cache_policy() -> str:
     """
-    simple debug printer helper
+    Run apt-cache policy and return its output.
+
+    :return: Output of apt-cache policy command
+    :raises subprocess.CalledProcessError: If the command fails
     """
-
     try:
-        debug_me = os.getenv('DEBUG_ME')
-    except:
-        debug_me = False
-    if debug_me:
-        print(text, file = sys.stderr)
-
-# 'debug' prints
-d_print(f"Debug: Will write Origins-Pattern into: '{output}'")
-
-# distro_codename detection borrowed from unattended-upgrades script:
-# no py3 lsb_release in debian :/
-DISTRO_CODENAME = ""  # type: str
+        result = subprocess.run(
+            ['apt-cache', 'policy'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"Error running apt-cache policy: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
-def init_distro_info():
-    global DISTRO_CODENAME
-    DISTRO_CODENAME = subprocess.check_output(
-        ["lsb_release", "-c", "-s"], universal_newlines=True).strip()
+def get_architectures() -> set:
+    """
+    Get the current and foreign architectures.
 
-def is_integer(s):
+    :return: Set of enabled architectures
+    """
     try:
-        int(s)
-        return True
+        # Get primary architecture
+        primary_arch = subprocess.run(
+            ['dpkg', '--print-architecture'],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.strip()
+
+        # Get foreign architectures
+        foreign_arch_result = subprocess.run(
+            ['dpkg', '--print-foreign-architectures'],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.strip().splitlines()
+
+        # Combine into a set of architectures
+        architectures = set([primary_arch] + foreign_arch_result)
+
+        return architectures
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error getting architectures: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def parse_apt_cache_policy(policy_output: str) -> List[Dict[str, str]]:
+    """
+    Parse apt-cache policy output into a structured list of repository entries.
+
+    :param policy_output: Output string from apt-cache policy
+    :return: List of dictionaries containing repository information
+    """
+    # Get allowed architectures
+    allowed_architectures = get_architectures()
+
+    repositories = []
+    current_repo = None
+
+    for line in policy_output.splitlines():
+        line = line.strip()
+        parts = line.split()
+
+        # Check if the first part is a positive integer
+        if parts and parts[0].isdigit() and int(parts[0]) >= 1:
+            # Parse PIN and URI, removing architecture-specific "Packages" part
+            pin = int(parts[0])
+
+            try:
+                packages_index = parts.index("Packages")
+                uri_parts = parts[1:packages_index-1]  # Exclude architecture and "Packages"
+                uri = ' '.join(uri_parts)
+            except ValueError:
+                # If no "Packages" found, use the entire line
+                uri = ' '.join(parts[1:])
+
+            # Create a new repository entry for this PIN/URI
+            current_repo = {
+                'pin': pin,
+                'uri': uri,
+                'uris': [uri],  # Track all URIs
+                'origin': {}
+            }
+
+        # Release line
+        elif line.startswith('release '):
+            # Only process if we have a current repository
+            if current_repo is not None:
+                # Parse release attributes
+                attrs = {}
+                origin = {}
+
+                attrs.update({attr.split('=')[0]: attr.split('=')[1]
+                              for attr in line[8:].split(',')
+                              if '=' in attr})
+
+                origin.update({
+                    k: v for k, v in attrs.items()
+                    if k in ('o', 'a', 'n', 'l') and v
+                })
+
+                # Check if the architecture is in the allowed set
+                if attrs.get('b') in allowed_architectures:
+                    current_repo['origin'] = origin
+
+                    # Find or create repository with this origin
+                    matching_repo = next(
+                        (repo for repo in repositories
+                         if repo.get('origin', {}) == origin),
+                        None
+                    )
+
+                    if matching_repo is None:
+                        # New unique origin
+                        repositories.append(current_repo)
+                    else:
+                        # Add URI to existing repository if not already present
+                        if current_repo['uri'] not in matching_repo.get('uris', []):
+                            matching_repo['uris'].append(current_repo['uri'])
+                else:
+                    # Reset current repo if architecture doesn't match
+                    current_repo = None
+
+    return repositories
+
+
+def filter_repositories(repositories: List[Dict[str, str]],
+                        filter_origins: List[str] = ['Debian', 'Debian Backports', 'MX repository'],
+                        min_pin: int = 500) -> List[Dict[str, str]]:
+    """
+    Filter repositories based on origin and PIN.
+
+    :param repositories: List of repository dictionaries
+    :param filter_origins: List of origins to filter out
+    :param min_pin: Minimum PIN value to include
+    :return: Filtered list of repositories
+    """
+    return [
+        repo for repo in repositories
+        if (repo.get('origin', {}).get('o', '') not in filter_origins) and
+           (repo.get('pin', 0) >= min_pin)
+    ]
+
+
+def generate_origins_pattern(repositories: List[Dict[str, str]],
+                             no_uris: bool = False) -> str:
+    """
+    Generate the Unattended-Upgrade::Origins-Pattern stanza.
+
+    :param repositories: List of filtered repository dictionaries
+    :return: Formatted Origins-Pattern string
+    """
+    # Get current timestamp
+    timestamp = datetime.now().astimezone().strftime("%a, %d %b %Y %H:%M:%S %z")
+
+    # Start building the output
+    output = [f"// generated by update-Origins-Pattern at {timestamp}"]
+    output.append("//")
+    output.append("Unattended-Upgrade::Origins-Pattern {")
+
+    # Track processed origins to avoid duplicates
+    processed_origins = set()
+
+    for repo in repositories:
+        origin = repo.get('origin', {})
+
+        # Create origin pattern string
+        origin_pattern = ','.join(f'{k}={origin[k]}' for k in ('o', 'a', 'n', 'l') if origin.get(k))
+
+        # Avoid duplicates
+        if origin_pattern in processed_origins:
+            continue
+        processed_origins.add(origin_pattern)
+
+        # Add commented URI lines
+        if not no_uris:
+            for uri in repo.get('uris', []):
+                output.append(f"//  {repo['pin']} {uri}")
+
+        # Add origin pattern
+        output.append(f'    "{origin_pattern}";')
+
+    output.append("};")
+
+    return "\n".join(output)
+
+
+def positive_int(value):
+    try:
+        ivalue = int(value)
+        if ivalue < 1:
+            raise argparse.ArgumentTypeError(f"invalid non-positive int value: {value}")
+        return ivalue
     except ValueError:
-        return False
+        raise argparse.ArgumentTypeError(f"invalid int value: {value}")
 
-# init global distro info
-init_distro_info()
 
-debian_codename = DISTRO_CODENAME
+def create_parser(default_file):
+    parser = argparse.ArgumentParser(
+        description="Update the Unattended-Upgrade::Origins-Pattern for Non-Debian and non-MX repositories"
+    )
 
-# read current apt policy
-pol = run(['apt-cache', 'policy'], capture_output=True,text=True).stdout
+    # Origins option
+    parser.add_argument(
+        '-o', '--origins',
+        nargs='+',
+        default=['Debian', 'Debian Backports', 'MX repository'],
+        help="Origins to filter out (default: 'Debian', 'Debian Backports', 'MX repository')"
+    )
 
-# strip leading whitespaces
-lines = [ x.strip() for x in pol.splitlines() ]
+    parser.add_argument(
+        '-p', '--pin',
+        type=positive_int,
+        default=500,
+        help='Minimum positive PIN to include (default: 500)'
+    )
 
-# keep pin-priority line and release line
-lines = [ x for x in lines if is_integer(x.split()[0]) or x.startswith('release') ]
+    parser.add_argument(
+        '-n', '--no-uris',
+        help="Don't include pin/uri lines within the generated output",
+        action="store_true"
+    )
 
-# remove leading 'release' with release lines
-lines = [ re.sub('^release ','',x).strip() for x in lines ]
+    # Mutually exclusive group for output
+    output_group = parser.add_mutually_exclusive_group()
 
-# check we have a even number of lines - one pin- and one release line
-if len(lines) % 2 != 0:
-    # fixme: fallback to ignore pin-lines with apt-cache output
-    print("Warning: mismatch in number of pin- and relase-lines from apt-cache policy !")
+    output_group.add_argument(
+        '-d', '--default',
+        help=f'Use default file path (default: {default_file})',
+        action="store_true"
+    )
+    output_group.add_argument(
+        'file',
+        nargs='?',
+        help='Custom file to be updated'
+    )
 
-# put pin- and release-lines into a separate list
-pins = lines[0::2]
-rels = lines[1::2]
+    return parser
 
-# remove from pin-lines last two fields: architecture and 'Packages'
-pins = [ ' '.join(x.split()[0:-2]) for x in pins ]
 
-# put release -> lines into (rels -> pins) dictonary
-relspins = dict(zip( rels, pins))
-d_print(json.dumps(relspins, indent=4))
+def main():
+    # Default output file path
+    default_file = '/etc/apt/apt.conf.d/51unattended-upgrades-origins'
+    parser = create_parser(default_file)
+    args = parser.parse_args()
 
-# create a dict with slimmed-down release lines and a dict of pin-lines
-origins = {}
-for k, v in relspins.items():
-    # remove from  binary architecture, componenents and version from release-line
-    # usign regexp: re.sub(',(b|v)=[^,]*','',x)
-    pin = v
-    rel = re.sub('(b|v)=[^,]*','',k)
-    # strip double- and leading commas
-    rel = re.sub(',,',',',rel)
-    rel = rel.strip(',')
-
-    # components handling for MX Repositories: keep components
-    # needed to disable MX testrepo
-    if  'o=MX repository' in rel:
-        remove_components = False
+   # Determine output file
+    if args.default:
+        # -d was used
+        output_file = default_file
+    elif args.file:
+        # Custom file specified
+        output_file = args.file
     else:
-        remove_components = True
+        # No output file specified
+        output_file = None  # stdout
 
-    if remove_components:
-        # remove componenents within release lines
-        rel = re.sub('c=[^,]*','',rel)
-        rel = re.sub(',,',',',rel)
-        rel = rel.strip(',')
-
-    # strip double- and leading commas
-    rel = re.sub(',,',',',rel)
-    rel = rel.strip(',')
-    # add 'dict' and 'pins' dictonary to rel-key in origins dict
-    if not rel in origins:
-        origins[rel] = { 'dict': {}, 'pins': {} }
-
-    origins[rel]['dict'] = dict( x.split('=') for x in rel.split(',') )
-    origins[rel]['enabled'] = True
-
-    # add pin-line to release dict entry as 'pins'-key
-    if not pin in origins[rel]['pins']:
-        origins[rel]['pins'][pin] = 'x'
-
-    """
-    Note:
-    MX repository for testrepo, temp and ahs-staging do get identified
-    by code'n'ame and and 'c'omponents, resp.:
-    MX test-repo   "o=MX repository,a=mx,n=trixie,l=MX repository,c=test"
-    MX temp-repo   "o=MX repository,a=mx,n=temp,l=MX repository,c=main"
-    MX ahs-staging "o=MX repository,a=mx,n=trixie,l=MX repository,c=ahs-staging"
-    """
-    # use 'check' dictionary to find origin lines to be disabled
-    check = origins[rel]['dict']
-
-    # Disable Unattended Upgrades with components not 'main', 'ahs', or 'non-free',
-    # i.e disables test, temp and ahs-staging:
-    if check.get('o') == 'MX repository':
-        if check.get('n') == 'temp':
-            origins[rel]['enabled'] = False
-        if check.get('c') not in ('main', 'ahs', 'non-free'):
-            origins[rel]['enabled'] = False
-        if check.get('n') and check.get('n') != debian_codename:
-            origins[rel]['enabled'] = False
-
-    # Disable Unattended Upgrades from Debian backports repos
-    if check.get('o') == 'Debian Backports':
-        origins[rel]['enabled'] = False
-    if check.get('o') == 'Debian Backports':
-        origins[rel]['enabled'] = False
-
-    # Disable Unattended Upgrades from Debian experimental repos
-    if check.get('o') == 'Debian Experimental':
-        origins[rel]['enabled'] = False
-    if ( check.get('o') == 'Debian' and
-         check.get('a') == 'experimental'):
-        origins[rel]['enabled'] = False
-
-    # Disable Unattended Upgrades from Debian Multimedia repos
-    if 'Unofficial Multimedia Packages' in rel:
-        origins[rel]['enabled'] = False
-
-    """
-    Disable Unattended Upgrades from Debian repos with Debian releases
-    other than the running one is based upon.
-    """
-
-    if (check.get('o') == 'Debian' and check.get('n') 
-        and check.get('n') not in (
-            f"{debian_codename}",
-            f"{debian_codename}-updates",
-            f"{debian_codename}-security")):
-        origins[rel]['enabled'] = False
-
-d_print(json.dumps(origins, indent=4))
-
-#
-d_print("Unattended-Upgrade::Origins-Pattern {")
-
-import datetime
-now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-uuop = """Unattended-Upgrade::Origins-Pattern {
-"""
-for k in sorted(origins.keys()):
-    ok = origins[k]
-    if not 'o' in  ok['dict']:
-        continue
-
-    for pin_line in ok['pins']:
-        pin, deb = pin_line.split(' ',1)
-        #d_print(f"//{pin.rjust(5, ' ')} {deb}")
-        #d_print("//")
-        d_print(f"//  {pin_line}")
-        uuop += f"""//  {pin_line}
-"""
-    if ok['enabled']:
-        prefix = '  '
-    else:
-        prefix = '//'
-    d_print(f'{prefix}  "{k}";')
-    uuop += f'''{prefix}  "{k}";
-'''
-d_print("};")
-uuop +='''};
-'''
-d_print(uuop)
-
-headline = f"// generated by {prog}"
-header = f"""{headline} at {now}
-//
-"""
-# display generated output on sdtout
-if output == 'stdout':
-    print(header + uuop)
-    sys.exit(0)
-
-# calculate md5sum from existing file
-try:
-    with open(output,'r') as f:
-        old_lines = f.read().splitlines()
-        if len(old_lines) > 1:
-            line = old_lines[0]
-            if headline in line:
-                old_lines = old_lines[1:]
-            line = old_lines[0]
-            if line.startswith('//'):
-                old_lines = old_lines[1:]
-        old = '\n'.join(old_lines) + '\n'
-        old = old.encode(encoding="ascii")
-        md5_old = hashlib.md5(old).hexdigest()
-except FileNotFoundError as e:
-    md5_old = ''
-
-new = uuop.encode(encoding="ascii")
-md5_new = hashlib.md5(new).hexdigest()
-
-# write out if content has changed changed
-if md5_old != md5_new:
+    # Parse apt-cache policy input
     try:
-        with open(output,'w') as f:
-            f.write(header + uuop)
-    except IOError as e:
-        print(e, file = sys.stderr)
-        sys.exit(e.errno)
+        repositories = parse_apt_cache_policy(run_apt_cache_policy())
+    except Exception as e:
+        print(f"Error parsing apt-cache policy: {e}", file=sys.stderr)
+        sys.exit(1)
 
-sys.exit(0)
+    # Filter repositories
+    filtered_repos = filter_repositories(
+        repositories,
+        filter_origins=args.origins,
+        min_pin=args.pin
+    )
+
+    # Generate origins pattern
+    origins_pattern = generate_origins_pattern(
+        filtered_repos,
+        args.no_uris
+    )
+
+    # Determine output destination
+    if output_file:
+        try:
+            with open(output_file, 'w') as f:
+                f.write(origins_pattern)
+            print(f"Origins-Pattern written to '{output_file}'")
+        except PermissionError:
+            print(f"[Errno 13] Permission denied: '{output_file}'", file=sys.stderr)
+            sys.exit(1)
+        except IOError as e:
+            print(f"Error writing to file: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Output to stdout
+        print(origins_pattern)
+
+if __name__ == '__main__':
+    main()

@@ -53,7 +53,7 @@ read -r AUTO_CLOSE_TIMEOUT < <(get_config_item "auto_close_timeout" "10")
 #AUTO_CLOSE=$(grep -oP '^AUTO_CLOSE=\K.*' "$APT_NOTIFIERRC" 2>/dev/null)
 
 read -r UPGRADE_TYPE < <(get_config_item "upgrade_type" "full-upgrade")
-read -r UPGRADE_ASSUME_YES < <(get_config_item "upgrade_type" "full-upgrade")
+read -r UPGRADE_ASSUME_YES < <(get_config_item "upgrade_assume_yes" "false")
 read -r AUTO_CLOSE  < <(get_config_item "auto_close" "true")
 
 # upgrade type dist-upgrade or upgrade
@@ -126,7 +126,7 @@ if [ x"$UPDATER_USE_NALA" = x"true" ]; then
         Nala_Update_Pref_Raw=" --raw-dpkg"
     fi
 
-    [ y"${DEBUG_APT_NOTIFIER/true/es}" = "yes" ] &&  echo nala upgrade $AptPref_Opts $Nala_UPGRADE_TYPE $Nala_Pref $AssumeYes
+    [ y"${DEBUG_MX_UPDATER/true/es}" = "yes" ] &&  echo nala upgrade $AptPref_Opts $Nala_UPGRADE_TYPE $Nala_Pref $AssumeYes
     echo "nala upgrade $Nala_UPGRADE_TYPE $Nala_Pref $Nala_Update_Pref_Raw"
     nala upgrade $AptPref_Opts $Nala_UPGRADE_TYPE $Nala_Pref $Nala_Update_Pref $Nala_Update_Pref_Raw $AssumeYes
     if [ "$Nala_Update_Pref" = "--update" ]; then
@@ -150,6 +150,7 @@ else
             AptPref_Opts+=" -o APT::Get::Upgrade-Allow-New=true"
             AptPref_Opts+=" -o Binary::apt::APT::Get::Upgrade-Allow-New=true"
         fi
+    [ y"${DEBUG_MX_UPDATER/true/es}" = "yes" ] &&  echo apt --verbose-versions $AssumeYes $AptPref_Opts $UPGRADE_TYPE
     apt --verbose-versions $AssumeYes $AptPref_Opts $UPGRADE_TYPE
 fi
 
@@ -162,7 +163,6 @@ else
 fi
 
 # auto close timeout
-AUTO_CLOSE_TIMEOUT="${APT_NOTIFIER_CONFIG_ITEMS[upgrade_auto_close_timeout]}"
 default_timeout=10
 if [ -z "${AUTO_CLOSE_TIMEOUT}" ]; then
     AUTO_CLOSE_TIMEOUT=$default_timeout

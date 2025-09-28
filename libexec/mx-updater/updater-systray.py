@@ -279,6 +279,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.initialized = False
         self._lock = threading.Lock()
 
+        self.is_detect_plasma = self.detect_plasma()
+        self.is_detect_fluxbox = self.detect_fluxbox()
+        self.disable_hide_until = (self.is_detect_fluxbox, self.is_detect_plasma)
+
         # on startup, try to acquire a lock
         self.run_time_path = acquire_runtime_lock()
         if self.run_time_path is None:
@@ -291,6 +295,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._settings = {}
         # actions references to look up a QAction by tag_name
         self.actions = {}
+        self._total_updates = 0
 
         # Connect directly to the service's Qt signal (avoids DBus loopback)
         # self.service.value_changed_qt.connect(self.on_value_changed)
@@ -1207,6 +1212,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         upgraded, newly_installed, to_remove, not_upgraded = new_upgrades_available
         total_updates = upgraded + newly_installed
+        self._total_updates = total_updates
 
         logger.debug("[set_tooltip] set tooltip for '%s' with upgrades_available: %s", upgrade_type, new_upgrades_available)
 
@@ -1220,7 +1226,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         total_available = ngettext(
                             "{num} new update available",
                             "{num} new updates available",
-                            total_updates
+                            self._total_updates
                             ).format(num=total_updates)
 
         upgraded_and_new = _a("%lu upgraded, %lu newly installed, ")\
@@ -1272,7 +1278,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         hide_until_upgrades_available = str(value).lower() in ('true')
         logger.debug("[%s] hide_until_upgrades_available is %r", me, hide_until_upgrades_available)
 
-        if total_updates == 0:
+        if self._total_updates == 0:
             tooltip_available = _("No updates available")
             self._clean_notifications()
             self._notified_upgrades = (0,0,0,0)
@@ -1334,12 +1340,13 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.debug("[%s] ----------------------------------------------", me)
 
 
-        if total_updates:
+        if self._total_updates:
             self._apply_entry_visible("view_and_upgrade", True)
             self._apply_entry_visible("hide_until_updates_available", False)
         else:
             self._apply_entry_visible("view_and_upgrade", False)
-            self._apply_entry_visible("hide_until_updates_available", True)
+            if not any(self.disable_hide_until):
+                self._apply_entry_visible("hide_until_updates_available", True)
 
         #self._clean_notifications()
 
@@ -1418,11 +1425,13 @@ class SystemTrayIcon(QSystemTrayIcon):
             self._apply_tray_visibility(True)
         else:
             self._apply_entry_visible("view_and_upgrade", False)
-            self._apply_entry_visible("hide_until_updates_available", True)
 
-            hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
-            hide_until_upgrades_available = str(hide_until_upgrades_available).lower() in ('true')
-            self._apply_tray_visibility(not hide_until_upgrades_available)
+            if not any(self.disable_hide_until):
+                self._apply_entry_visible("hide_until_updates_available", True)
+
+                hide_until_upgrades_available = self._settings.get('hide_until_upgrades_available', False)
+                hide_until_upgrades_available = str(hide_until_upgrades_available).lower() in ('true')
+                self._apply_tray_visibility(not hide_until_upgrades_available)
 
 
     def initUI(self):
@@ -1540,6 +1549,9 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.actions["middle_click"] = self.actions["packageinstaller"]
         elif synaptic_is_available:
             self.actions["middle_click"] = self.actions["synaptic"]
+        else:
+            # fallback to view-and_upgrade
+            self.actions["middle_click"] = self.actions["sview_and_upgrade"]
 
         # Check and set visibility for unattended-upgrades log
 
@@ -1714,24 +1726,31 @@ class SystemTrayIcon(QSystemTrayIcon):
             elif left_click == "package_installer":
                 left_click = "packageinstaller"
 
-            action = self.actions.get(left_click)
+            action = None
+            if self._total_updates:
+                action = self.actions.get(left_click)
+            else:
+                for x in ("synaptic", "packageinstaller", "view_and_upgrade"):
+                    if self.actions.get(x):
+                        action = self.actions.get(x)
+                        break
             if action:
                 action.trigger()
 
         elif reason == QSystemTrayIcon.ActivationReason.MiddleClick:
             # middle-click -> custom action (if defined) or popup menu
             logger.debug("self.middle_click()")
-            middle = self.actions.get("middle_click")
-            if middle:
-                middle.trigger()
-            else:
-                self.right_click()
+            action = None
+            for x in ("packageinstaller", "synaptic", "view_and_upgrade"):
+                if self.actions.get(x):
+                    action = self.actions.get(x)
+                    break
+            if action:
+                action.trigger()
+
 
     def right_click(self):
         self.menu.exec()
-        #self.menu.exec(QCursor.pos())
-        #self.contextMenu().exec(QCursor.pos())
-
 
     def is_valid_upgrades_tuple(self, obj: Any) -> bool:
         return (
@@ -1883,6 +1902,73 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         logger.info("[%s] set visibility for auto_update_dpkg_log: %r", me, enable_auto_update_logs)
         self.set_action_visble("auto_update_dpkg_log", enable_auto_update_logs)
+
+
+    def detect_plasma(self):
+        # kde/plasma detection
+        plasma_indicators = [
+            os.environ.get('DESKTOP_SESSION', '').lower() == 'plasma',
+            os.environ.get('XDG_CURRENT_DESKTOP', '').lower() == 'kde',
+            os.environ.get('KDE_FULL_SESSION', '').lower() == 'true'
+        ]
+
+        if any(plasma_indicators):
+            return any(plasma_indicators)
+
+        # additional with process check
+        try:
+            plasma_shell_process = subprocess.run(
+                ['pgrep', '-x', 'plasmashell'],
+                capture_output=True,
+                text=True
+            )
+            plasma_indicators.append(plasma_shell_process.returncode == 0)
+        except Exception:
+            try:
+                plasma_shell_process = subprocess.run(
+                    ['pidof', '-q', 'plasmashell'],
+                    capture_output=True,
+                    text=True
+                )
+                plasma_indicators.append(plasma_shell_process.returncode == 0)
+            except Exception:
+                pass
+
+        return any(plasma_indicators)
+
+    def detect_fluxbox(self):
+        # fluxbox detection
+        fluxbox_indicators = [
+            os.environ.get('DESKTOP_SESSION', '').lower() == 'fluxbox',
+            os.environ.get('XDG_SESSION_DESKTOP', '').lower() == 'fluxbox',
+            os.environ.get('GDMSESSION', '').lower() == 'fluxbox'
+        ]
+
+        if any(fluxbox_indicators):
+            return any(fluxbox_indicators)
+
+        # additional with process check
+        try:
+            fluxbox_process = subprocess.run(
+                ['pgrep', '-x', 'fluxbox'],
+                capture_output=True,
+                text=True
+            )
+            fluxbox_indicators.append(fluxbox_process.returncode == 0)
+        except Exception:
+            try:
+                fluxbox_process = subprocess.run(
+                    ['pidof', '-q', 'fluxbox'],
+                    capture_output=True,
+                    text=True
+                )
+                fluxbox_indicators.append(fluxbox_process.returncode == 0)
+            except Exception:
+                pass
+
+        return any(fluxbox_indicators)
+
+
 
 
 def make_notification(title, message, icon=None, timeout=10_000):

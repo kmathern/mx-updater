@@ -13,6 +13,7 @@ case "$1" in
         rm -f /etc/cron.d/mx-Unattended-Origins-Pattern-update    || :
         rm -f /etc/xdg/autostart/mx-updater-autostart-xdg.desktop || :
         rm -f /etc/xdg/autostart/mx-updater-autostart.desktop     || :
+        rm -f /etc/apt/apt.conf.d/51unattended-upgrades-default-origins || :
         ;;
     esac
 exit 0

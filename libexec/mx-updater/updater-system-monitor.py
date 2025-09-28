@@ -56,6 +56,7 @@ DEFAULT_LOCKS = [
     "/var/lib/dpkg/lock-frontend",
     "/var/lib/apt/lists/lock",
     "/var/lib/dpkg/lock",
+    "/var/lib/apt/daily_lock",
 ]
 
 # apps which blocks check_for_updates until closed

@@ -49,6 +49,15 @@ case "$1" in
 	    [  -f /usr/share/mx-updater/mx-updater-autostart.desktop ]; then
 	    cp /usr/share/mx-updater/mx-updater-autostart.desktop /etc/xdg/autostart/mx-updater-autostart.desktop  || true
 	fi
+
+	if  [ -f /usr/share/mx-updater/51unattended-upgrades-default-origins ]; then
+	    if  [ -f /etc/apt/apt.conf.d/51unattended-upgrades-default-origins ]; then
+	       rm -f /etc/apt/apt.conf.d/51unattended-upgrades-default-origins || :
+	    fi
+	    cp /usr/share/mx-updater/51unattended-upgrades-default-origins \
+	       /etc/apt/apt.conf.d/51unattended-upgrades-default-origins 2>/dev/null || :
+	fi
+
 	
 	;;
 esac
