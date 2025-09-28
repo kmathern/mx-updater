@@ -1,12 +1,15 @@
 mx-updater (25.09.05mx25) mx; urgency=medium
 
-  * adjust update-Origin-Pattern to generate only non-default repo origins
-  * add static 51unattended-upgrades-default-origins for default repos
-  * fix assume-yes for automatically confirm package upgrades
-  * disable 'hide until updates available' option for Kde/Plasma
-  * disable right-click 'hide until updates available' for Fluxbox
+  * Adjust 'update-Origin-Pattern' to generate only non-standard repo origins
+  * Add static '51unattended-upgrades-default-origins' for standard repos
+  * Correct 'assume-yes' for automatic confirmation of package upgrades
+  * Disable the 'Hide until updates are available' option for Kde/Plasma
+  * Disable the right-click option 'Hide until updates are available' for Fluxbox
+  * Fix the issue with left-clicking on 'No updates available'
+  * Middle-clicking remains enabled even if Synaptic or Package Installer are not installed
+  * Add 'daily_lock' from apt to the list of known locks in 'updater-system-monitor'
 
- -- fehlix <fehlix@mxlinux.org>  Sat, 27 Sep 2025 16:01:19 -0400
+ -- fehlix <fehlix@mxlinux.org>  Sun, 28 Sep 2025 14:23:39 -0400
 
 mx-updater (25.09.04mx25) mx; urgency=medium
 

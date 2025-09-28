@@ -295,6 +295,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._settings = {}
         # actions references to look up a QAction by tag_name
         self.actions = {}
+        self._total_updates = 0
 
         # Connect directly to the service's Qt signal (avoids DBus loopback)
         # self.service.value_changed_qt.connect(self.on_value_changed)
@@ -1211,6 +1212,7 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         upgraded, newly_installed, to_remove, not_upgraded = new_upgrades_available
         total_updates = upgraded + newly_installed
+        self._total_updates = total_updates
 
         logger.debug("[set_tooltip] set tooltip for '%s' with upgrades_available: %s", upgrade_type, new_upgrades_available)
 
@@ -1224,7 +1226,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         total_available = ngettext(
                             "{num} new update available",
                             "{num} new updates available",
-                            total_updates
+                            self._total_updates
                             ).format(num=total_updates)
 
         upgraded_and_new = _a("%lu upgraded, %lu newly installed, ")\
@@ -1276,7 +1278,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         hide_until_upgrades_available = str(value).lower() in ('true')
         logger.debug("[%s] hide_until_upgrades_available is %r", me, hide_until_upgrades_available)
 
-        if total_updates == 0:
+        if self._total_updates == 0:
             tooltip_available = _("No updates available")
             self._clean_notifications()
             self._notified_upgrades = (0,0,0,0)
@@ -1338,7 +1340,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         logger.debug("[%s] ----------------------------------------------", me)
 
 
-        if total_updates:
+        if self._total_updates:
             self._apply_entry_visible("view_and_upgrade", True)
             self._apply_entry_visible("hide_until_updates_available", False)
         else:
@@ -1547,6 +1549,9 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.actions["middle_click"] = self.actions["packageinstaller"]
         elif synaptic_is_available:
             self.actions["middle_click"] = self.actions["synaptic"]
+        else:
+            # fallback to view-and_upgrade
+            self.actions["middle_click"] = self.actions["sview_and_upgrade"]
 
         # Check and set visibility for unattended-upgrades log
 
@@ -1721,24 +1726,31 @@ class SystemTrayIcon(QSystemTrayIcon):
             elif left_click == "package_installer":
                 left_click = "packageinstaller"
 
-            action = self.actions.get(left_click)
+            action = None
+            if self._total_updates:
+                action = self.actions.get(left_click)
+            else:
+                for x in ("synaptic", "packageinstaller", "view_and_upgrade"):
+                    if self.actions.get(x):
+                        action = self.actions.get(x)
+                        break
             if action:
                 action.trigger()
 
         elif reason == QSystemTrayIcon.ActivationReason.MiddleClick:
             # middle-click -> custom action (if defined) or popup menu
             logger.debug("self.middle_click()")
-            middle = self.actions.get("middle_click")
-            if middle:
-                middle.trigger()
-            else:
-                self.right_click()
+            action = None
+            for x in ("packageinstaller", "synaptic", "view_and_upgrade"):
+                if self.actions.get(x):
+                    action = self.actions.get(x)
+                    break
+            if action:
+                action.trigger()
+
 
     def right_click(self):
         self.menu.exec()
-        #self.menu.exec(QCursor.pos())
-        #self.contextMenu().exec(QCursor.pos())
-
 
     def is_valid_upgrades_tuple(self, obj: Any) -> bool:
         return (
