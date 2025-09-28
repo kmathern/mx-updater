@@ -200,7 +200,7 @@ def generate_origins_pattern(repositories: List[Dict[str, str]],
         # Add origin pattern
         output.append(f'    "{origin_pattern}";')
 
-    output.append("};")
+    output.append("};\n")
 
     return "\n".join(output)
 
@@ -217,7 +217,7 @@ def positive_int(value):
 
 def create_parser(default_file):
     parser = argparse.ArgumentParser(
-        description="Update the Unattended-Upgrade::Origins-Pattern for Non-Debian and non-MX repositories"
+        description="Update the Unattended-Upgrade::Origins-Pattern for non-standard repositories"
     )
 
     # Origins option
