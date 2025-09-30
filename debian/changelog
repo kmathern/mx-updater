@@ -1,3 +1,10 @@
+mx-updater (25.09.05mx25+dev01) mx; urgency=medium
+
+  * Add site to origin pattern. Thanks kmathern.
+  * Use locale domain 'mx-updater' instead of 'apt-notifier'
+
+ -- fehlix <fehlix@mxlinux.org>  Mon, 29 Sep 2025 20:08:30 -0400
+
 mx-updater (25.09.05mx25) mx; urgency=medium
 
   * Adjust 'update-Origin-Pattern' to generate only non-standard repo origins

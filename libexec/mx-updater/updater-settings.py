@@ -53,7 +53,7 @@ os.environ["EGL_LOG_LEVEL"] = "fatal"
 
 
 # create a Translator instance
-translator = Translator(textdomain='apt-notifier')
+translator = Translator(textdomain='mx-updater')
 _ = translator.translate  # Use the translator function
 
 
