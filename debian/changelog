@@ -1,4 +1,4 @@
-mx-updater (25.09.05mx25) mx; urgency=medium
+mx-updater (25.09.06mx25) mx; urgency=medium
 
   * Add origin 'site=' to origin pattern. Thanks kmathern.
   * Use locale domain 'mx-updater' instead of 'apt-notifier'
