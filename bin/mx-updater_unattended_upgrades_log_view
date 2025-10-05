@@ -45,8 +45,15 @@ NoLogsFound=$(mygettext -d mx-updater "No logs found.")
 
 if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]
   then 
-    StartOfLatestEntry="$(ShowUnattendedUpgradesLogs | grep 'Initial blacklist : ' | awk '{print $1,$2}' | tail -n 1)"
-    ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | less -~ -R --prompt="--less--[$LessPrompt]" -p "${StartOfLatestEntry}"
+    StartOfLatestEntry="$(ShowUnattendedUpgradesLogs | grep INFO\ Starting.* | tail -n2 | head -n1)"
+    if [ "$1" != "-d" ]
+        then
+            ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | grep -v DEBUG |\ 
+            less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+        else
+            ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' |\
+            less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+    fi        
   else
     echo -e \\n"${NoLogsFound}"\\n | less -~ -R --prompt="--less--[$LessPrompt]"
 fi
