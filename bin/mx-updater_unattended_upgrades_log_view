@@ -44,9 +44,17 @@ NoLogsFound=$(mygettext -d mx-updater "No logs found.")
  SeeHistory=$(mygettext -d mx-updater "For a less detailed view see 'Auto-update dpkg log(s)' or 'History'.")
 
 if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]
-  then 
-    StartOfLatestEntry="$(ShowUnattendedUpgradesLogs | grep 'Initial blacklist : ' | awk '{print $1,$2}' | tail -n 1)"
-    ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | less -~ -R --prompt="--less--[$LessPrompt]" -p "${StartOfLatestEntry}"
+  then
+    Date_of_latest_unattended_upgrades="$(grep "INFO Starting unattended upgrades script" /var/log/unattended-upgrades/unattended-upgrades.log | tail -1| cut -c-10)"
+    StartOfLatestEntry="$(grep $Date_of_latest_unattended_upgrades.*'INFO Starting unattended upgrades script'  /var/log/unattended-upgrades/unattended-upgrades.log | head -1)"
+    if [ "$1" != "-d" ]
+        then
+            ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | grep -v DEBUG | grep -E '^20.* INFO |^o=|^origin=' |\
+            less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+        else
+            ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' |\
+            less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+    fi        
   else
     echo -e \\n"${NoLogsFound}"\\n | less -~ -R --prompt="--less--[$LessPrompt]"
 fi
