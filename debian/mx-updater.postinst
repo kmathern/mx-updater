@@ -58,6 +58,14 @@ case "$1" in
 	       /etc/apt/apt.conf.d/51unattended-upgrades-default-origins 2>/dev/null || :
 	fi
 
+	if  [ -f /usr/share/mx-updater/51unattended-upgrades-blacklist ]; then
+	    if  [ -f /etc/apt/apt.conf.d/51unattended-upgrades-blacklist ]; then
+	       rm -f /etc/apt/apt.conf.d/51unattended-upgrades-blacklist || :
+	    fi
+	    cp /usr/share/mx-updater/51unattended-upgrades-blacklist \
+	       /etc/apt/apt.conf.d/51unattended-upgrades-blacklist 2>/dev/null || :
+	fi
+
 	
 	;;
 esac

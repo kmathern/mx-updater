@@ -99,7 +99,8 @@ def parse_apt_cache_policy(policy_output: str) -> List[Dict[str, str]]:
                 'pin': pin,
                 'uri': uri,
                 'uris': [uri],  # Track all URIs
-                'origin': {}
+                'attrs': {},
+                'site': '',
             }
 
         # Release line
@@ -108,25 +109,26 @@ def parse_apt_cache_policy(policy_output: str) -> List[Dict[str, str]]:
             if current_repo is not None:
                 # Parse release attributes
                 attrs = {}
-                origin = {}
 
                 attrs.update({attr.split('=')[0]: attr.split('=')[1]
                               for attr in line[8:].split(',')
                               if '=' in attr})
 
-                origin.update({
-                    k: v for k, v in attrs.items()
-                    if k in ('o', 'a', 'n', 'l') and v
-                })
-
                 # Check if the architecture is in the allowed set
-                if attrs.get('b') in allowed_architectures:
-                    current_repo['origin'] = origin
+                if attrs.get('b') not in allowed_architectures:
+                    # Reset current repo if architecture doesn't match
+                    current_repo = None
+                else:
+                    current_repo['attrs'] = attrs
 
-                    # Find or create repository with this origin
+        elif line.startswith('origin '):
+            if current_repo is not None:
+                    site = parts[1] if len(parts) > 1 else ""
+                    current_repo['site'] = site
+                    # Find or create repository with current attrs and site
                     matching_repo = next(
                         (repo for repo in repositories
-                         if repo.get('origin', {}) == origin),
+                         if repo.get('attrs', {}) == attrs and repo.get('site', '') == site and site),
                         None
                     )
 
@@ -137,10 +139,6 @@ def parse_apt_cache_policy(policy_output: str) -> List[Dict[str, str]]:
                         # Add URI to existing repository if not already present
                         if current_repo['uri'] not in matching_repo.get('uris', []):
                             matching_repo['uris'].append(current_repo['uri'])
-                else:
-                    # Reset current repo if architecture doesn't match
-                    current_repo = None
-
     return repositories
 
 
@@ -157,7 +155,7 @@ def filter_repositories(repositories: List[Dict[str, str]],
     """
     return [
         repo for repo in repositories
-        if (repo.get('origin', {}).get('o', '') not in filter_origins) and
+        if (repo.get('attrs', {}).get('o', '') not in filter_origins) and
            (repo.get('pin', 0) >= min_pin)
     ]
 
@@ -182,10 +180,13 @@ def generate_origins_pattern(repositories: List[Dict[str, str]],
     processed_origins = set()
 
     for repo in repositories:
-        origin = repo.get('origin', {})
+        attrs = repo.get('attrs', {})
 
         # Create origin pattern string
-        origin_pattern = ','.join(f'{k}={origin[k]}' for k in ('o', 'a', 'n', 'l') if origin.get(k))
+        origin_pattern = ','.join(f'{k}={attrs.get(k,"")}' for k in ('o', 'a', 'n', 'l'))
+
+        # Add site to origin pattern string
+        origin_pattern += f',site={site}' if (site := repo.get('site', '')) else ''
 
         # Avoid duplicates
         if origin_pattern in processed_origins:
@@ -200,7 +201,7 @@ def generate_origins_pattern(repositories: List[Dict[str, str]],
         # Add origin pattern
         output.append(f'    "{origin_pattern}";')
 
-    output.append("};")
+    output.append("};\n")
 
     return "\n".join(output)
 
@@ -217,7 +218,7 @@ def positive_int(value):
 
 def create_parser(default_file):
     parser = argparse.ArgumentParser(
-        description="Update the Unattended-Upgrade::Origins-Pattern for Non-Debian and non-MX repositories"
+        description="Update the Unattended-Upgrade::Origins-Pattern for non-standard repositories"
     )
 
     # Origins option
