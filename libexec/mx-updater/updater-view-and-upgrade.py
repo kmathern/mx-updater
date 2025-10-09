@@ -349,8 +349,14 @@ class ViewAndUpgradeDialog(QDialog):
         self.auto_close_timeout.setValue(auto_close_timeout)
         
     def init_ui(self):
-        self.setWindowTitle(_("View and Upgrade"))
-        self.setWindowIcon(QIcon("/usr/share/icons/mx-updater.png"))
+
+        window_title_updater = _("MX Updater")
+        window_title_view_and_upgrade = _("View and Upgrade")
+        window_title = f"[ {window_title_updater} ] -- {window_title_view_and_upgrade}"
+        window_icon = "/usr/share/icons/hicolor/scalable/mx-updater.svg"
+
+        self.setWindowTitle(window_title)
+        self.setWindowIcon(QIcon(window_icon))
         
         self.log_text = ""
         self.log_cnt = 0
