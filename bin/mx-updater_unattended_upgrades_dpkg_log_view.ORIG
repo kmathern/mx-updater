@@ -23,10 +23,11 @@ ShowUnattendedUpgradesDpkgLogs()
  grep -v %$
 }
 
-export TEXTDOMAIN="mx-updater"
- LessPrompt=$(gettext "Press 'h' for help, 'q' to quit")
-NoLogsFound=$(gettext "No logs found.")
-
+#set strings using translations from the apt-notfier.py python script
+#define a wrapper function so xgettext will ignore the strings here
+mygettext() { gettext "$@"; }
+ LessPrompt=$(mygettext -d mx-updater "Press 'h' for help, 'q' to quit")
+NoLogsFound=$(mygettext -d mx-updater "No logs found.")
 
 
 if [ -f /var/log/unattended-upgrades/unattended-upgrades-dpkg.log ]
