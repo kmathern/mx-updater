@@ -50,7 +50,7 @@ if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]
     StartOfLatestEntry="$(grep "$Date_of_latest_unattended_upgrades.*${START_PATTERN}"  /var/log/unattended-upgrades/unattended-upgrades.log | head -1)"
     if [ "$1" != "-d" ]
         then
-            ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | grep -v DEBUG | grep -E '^20.* INFO |^o=|^origin=' |\
+            ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | grep -v DEBUG | grep -E ' INFO | WARNING | ERROR |^o=|^origin=' |\
             sed "/^20.*${PKGS_PATTERN}\s/{ h; s///; s/\s/\n/g; x; s/: .*/:/; p; x}" | less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
         else
             ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' |\
