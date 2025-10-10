@@ -51,10 +51,10 @@ if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]
     if [ "$1" != "-d" ]
         then
             ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | grep -v DEBUG | grep -E '^20.* INFO |^o=|^origin=' |\
-            sed  "/^20.*${PKGS_PATTERN}\s/{ h; s///; s/\s/\n/g; x; s/: .*/:/; p; x}" | less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+            sed "/^20.*${PKGS_PATTERN}\s/{ h; s///; s/\s/\n/g; x; s/: .*/:/; p; x}" | less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
         else
             ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' |\
-            sed '/INFO Packages that will be upgraded:/ s/ /\'$'\n /8g' |less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+            sed "/^20.*${PKGS_PATTERN}\s/{ h; s///; s/\s/\n/g; x; s/: .*/:/; p; x}" | less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
     fi        
   else
     echo -e \\n"${NoLogsFound}"\\n | less -~ -R --prompt="--less--[$LessPrompt]"
