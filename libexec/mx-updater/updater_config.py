@@ -134,8 +134,9 @@ class UpdaterSettingsManager:
         # Retrieve the raw value from QSettings section "Settings"
         stored_value = settings.value(f"Settings/{key}", default_value)
         if key == 'wireframe_transparent':
-            print(f"Debug: {key} : stored_value = {stored_value} stored_value-type {type(stored_value).__name__}")
-            print(f"Debug: default_type {default_type}")
+            #print(f"Debug: {key} : stored_value = {stored_value} stored_value-type {type(stored_value).__name__}")
+            #print(f"Debug: default_type {default_type}")
+            pass
         # Handle type conversion for boolean values
         if default_type is bool:
 
@@ -145,7 +146,8 @@ class UpdaterSettingsManager:
             # return as is if already a bool 
             if isinstance(stored_value, bool):
                 if key == 'wireframe_transparent':
-                    print(f"return as is if already a bool: {stored_value}")
+                    #print(f"return as is if already a bool: {stored_value}")
+                    pass
                 return stored_value
     
             # check trueness for numeric values (int or float), 
@@ -156,38 +158,42 @@ class UpdaterSettingsManager:
             if isinstance(stored_value, str):
 
                 if key == 'wireframe_transparent':
-                    print(f"Debug: {key} : stored_value = {stored_value}") 
-                    print(f"Debug: default_type {default_type}")
-
+                    #print(f"Debug: {key} : stored_value = {stored_value}") 
+                    #print(f"Debug: default_type {default_type}")
+                    pass
 
                 try:
                     # Try converting to int first
                     numeric_value = int(stored_value.strip())
                     if key == 'wireframe_transparent':
-                        print(f"Try converting to int first: {numeric_value} -> {bool(numeric_value)}")
+                        #print(f"Try converting to int first: {numeric_value} -> {bool(numeric_value)}")
+                        pass
                     return bool(numeric_value)
                 except ValueError:
                     if key == 'wireframe_transparent':
-                        print(f"Debug Try Int Except: {key} : stored_value = {stored_value}") 
+                        #print(f"Debug Try Int Except: {key} : stored_value = {stored_value}") 
+                        pass
                     try:
                         # If int conversion fails, try float
                         numeric_value = float(stored_value.strip())
                         return bool(numeric_value)
                     except ValueError:
                         if key == 'wireframe_transparent':
-                            print(f"Debug Try float Except : {key} : stored_value = {stored_value}")
+                            #print(f"Debug Try float Except : {key} : stored_value = {stored_value}")
                             ret = stored_value.strip().lower() in ['true', 'yes']
-                            print(f"Debug Try float return : {ret}") 
+                            #print(f"Debug Try float return : {ret}") 
                             
                         # If numeric conversion fails, check string "trueness"
                         return stored_value.strip().lower() in ['true', 'yes']
                 if key == 'wireframe_transparent':
-                    print(f"Debug Try: {key} : stored_value = {stored_value}") 
+                    #print(f"Debug Try: {key} : stored_value = {stored_value}") 
+                    pass
 
         
             # Fallback to default
             if key == 'wireframe_transparent':
-                print(f"Fallback to default: {default_value}")
+                #print(f"Fallback to default: {default_value}")
+                pass
             return default_value
         
         # Handle type conversion for integer values
@@ -272,7 +278,7 @@ class UpdaterSettingsManager:
                 continue
             
             # Load each setting, using section defaults
-            print(f"DEBUG: self.load_setting('{self.section}', '{key}')")
+            #print(f"DEBUG: self.load_setting('{self.section}', '{key}')")
             self.load_setting(key)
         
         return self.settings.get(self.section, {})
@@ -405,7 +411,7 @@ import inspect
 from PyQt6.QtCore import QSettings
 import json
 
-def pprint_qsettingsXXX(settings, var_name=None, format='dict', indent=2):
+def pprint_qsettings_NotUsed(settings, var_name=None, format='dict', indent=2):
     """
     Robust QSettings pretty printer with flexible naming
     

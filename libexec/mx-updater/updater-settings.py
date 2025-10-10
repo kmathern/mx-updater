@@ -9,7 +9,7 @@ import dbus
 from PyQt6.QtCore import QObject, pyqtSignal
 import logging
 
-print(f"sys.path: {sys.path}")
+#print(f"sys.path: {sys.path}")
 
 # import gettext
 
@@ -76,7 +76,7 @@ from pydbus import SessionBus
 
 
 
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -374,7 +374,7 @@ class SettingsEditorDialog(QDialog):
         other_frame_margins = (8, 10, 5, 3)
         # Get the current style
         current_style = QApplication.style().objectName()
-        print(f"QApplication.style = {current_style}")
+        #print(f"QApplication.style = {current_style}")
         if "gtk" in current_style:
             frame_margins = gtk_frame_margins
         elif "breeze" in current_style:
@@ -385,8 +385,12 @@ class SettingsEditorDialog(QDialog):
         return frame_margins
 
     def create_dialog(self):
-        self.setWindowTitle(_('MX Updater preferences'))
 
+        window_title_updater = _("MX Updater")
+        window_title_preferences = _("Preferences")
+        window_title  = f"[ {window_title_updater} ] -- {window_title_preferences}"
+        self.setWindowTitle(window_title)
+        
         #self.setWindowIcon(QIcon("mx-updater-settings.svg"))
         self.setWindowIcon(QIcon("/usr/share/icons/hicolor/scalable/apps/mx-updater-settings.svg"))
         self.setGeometry(100, 100, 400, 400)  # X, Y,  Width, Height
@@ -616,22 +620,43 @@ when additional updates are available."""))
             _("""Display transparent wireframe icons without color fill
 when no updates are available."""))
 
+        #TRANSLATORS: The strings is used for the 'dark' or 'light' icon-set
+        dark_string = _("dark")
+        
+        #TRANSLATORS: The strings is used for 'dark' or 'light' icon-set
+        light_string = _("light")
+        #TRANSLATORS: The wireframe icon-set
+        wireframe_string = _("wireframe")
+        #TRANSLATORS: The pulse icon-set
+        pulse_string = _("pulse")
+        #TRANSLATORS: The classic icon-set
+        classic_string = _("classic")
+        
         for icon_name in self.icon_order:
-            print(f"Icon_Look(name)={icon_name}")
+            #print(f"Icon_Look(name)={icon_name}")
             icon = self.icon_set.get(icon_name)
-            icon_label = _(icon.get('label'))
+            icon_label_string = icon.get('label')
             icon_some = icon.get('icon_some')
             icon_none = icon.get('icon_none')
-
+            
+            if icon_label_string == "wireframe dark":
+                icon_label = f"{wireframe_string} -- {dark_string}"
+            elif icon_label_string == "wireframe light":
+                icon_label = f"{wireframe_string} -- {light_string}"
+            elif icon_label_string == "pulse light":
+                icon_label = f"{pulse_string} -- {light_string}"
+            else:
+                icon_label = _(icon_label_string)
+            
             row_layout = QHBoxLayout()
             row_layout.setSpacing(20)  # smaller spacing between icons
             icon_radio_button = QRadioButton(icon_label)
             icon_radio_button.toggled.connect(
                 lambda checked, label=icon_label, name=icon_name:
                 self.on_icon_radio_button_toggled(checked, label, name))
-            print(f"Icon_Look(icon_name={icon_name}")
+            #print(f"Icon_Look(icon_name={icon_name}")
             icon_look= self.settings.get('icon_look')
-            print(f"self.settings.get('icon_look')={icon_look}")
+            #print(f"self.settings.get('icon_look')={icon_look}")
 
             if icon_name == icon_look:
                 icon_radio_button.setChecked(True)
@@ -833,7 +858,14 @@ system updates are available."""))
 
         #---------------------------------------------------------------
         # hide_until_upgrades_available_checkbox
-        self.hide_until_upgrades_available_checkbox = QCheckBox(_("hide until updates available"))
+        hide_until_updates_available_string = "Hide until updates available"
+        hide_until_updates_available_translated = _("Hide until updates available")
+        if hide_until_updates_available_string == hide_until_updates_available_translated:
+            hide_until_updates_available_string = hide_until_updates_available_string.lower()
+        else:
+            hide_until_updates_available_string = hide_until_updates_available_translated
+            
+        self.hide_until_upgrades_available_checkbox = QCheckBox(hide_until_updates_available_string)
         self.hide_until_upgrades_available_checkbox.setToolTip(
         _("""Hide the system update icon when no updates are available.
 Untick this box or run "MX Updater" from the menu to make the icon visible again."""))
@@ -943,10 +975,10 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         radio_button = self.left_click_button_group.checkedButton()
         if radio_button:
             left_click = self.left_click_button_map[radio_button]
-            print(f"toggled left_click: {left_click}")
+            #print(f"toggled left_click: {left_click}")
         else:
             left_click = "view_and_upgrade"
-            print(f"set default left_click: {left_click}")
+            #print(f"set default left_click: {left_click}")
 
         #self.qsettings.setValue(f"Settings/left_click", left_click)
         self.settings['left_click'] = left_click
@@ -962,7 +994,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         radio_button = self.upgrade_button_group.checkedButton()
         if radio_button:
             upgrade_type = self.upgrade_button_map[radio_button]
-            print(f"toggled upgrade_type: {upgrade_type}")
+            #print(f"toggled upgrade_type: {upgrade_type}")
         else:
             upgrade_type = "full-upgrade"
 
@@ -992,7 +1024,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
 
         if not self.dbus_call_back:
             self.dbus_call_back = True
-            print(f"No dbus callback for: {key} = {value}")
+            #print(f"No dbus callback for: {key} = {value}")
             return
 
         logger.debug("[%s] Try to update systray icon via dbus with: %s=%s", me, key, value)
@@ -1110,7 +1142,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         self.qsettings.setValue(f"Settings/use_nala", checked)
         self.qsettings.sync()
         self.update_view_and_upgrade("use_nala", checked)
-        print(f"toggled use_nala: {checked}")
+        #print(f"toggled use_nala: {checked}")
 
     def on_auto_upgrade_checkbox_toggledXXX(self, checked):
         # store auto_update selection into settings
@@ -1286,7 +1318,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         self.qsettings.setValue(f"Settings/upgrade_assume_yes", checked)
         self.qsettings.sync()
         self.update_view_and_upgrade("upgrade_assume_yes", checked)
-        print(f"toggled upgrade_assume_yes: {checked}")
+        #print(f"toggled upgrade_assume_yes: {checked}")
 
     def on_auto_close_checkbox_toggled(self, checked):
         self.auto_close_timeout.setEnabled(checked)
@@ -1294,14 +1326,14 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         self.qsettings.setValue(f"Settings/auto_close", checked)
         self.qsettings.sync()
         self.update_view_and_upgrade("auto_close", checked)
-        print(f"toggled auto_close: {checked}")
+        #print(f"toggled auto_close: {checked}")
 
     def on_use_dbus_notifications_checkbox_toggled(self, checked):
         # save use_dbus_notifications selection into settings dict
         self.settings["use_dbus_notifications"] = checked
         self.qsettings.setValue(f"Settings/use_dbus_notifications", checked)
         self.qsettings.sync()
-        print(f"toggled use_dbus_notifications: {checked}")
+        #print(f"toggled use_dbus_notifications: {checked}")
         self.update_systray_icon("use_dbus_notifications", checked)
 
 
@@ -1310,7 +1342,7 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         self.settings["hide_until_upgrades_available"] = checked
         self.qsettings.setValue("Settings/hide_until_upgrades_available", checked)
         self.qsettings.sync()
-        print(f"toggled hide_until_upgrades_available: {checked}")
+        #print(f"toggled hide_until_upgrades_available: {checked}")
         self.update_systray_icon("hide_until_upgrades_available", checked)
 
     def save_auto_close_timeout(self, value):
@@ -1329,11 +1361,11 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
     #---------------------------------------------------------------
     #---------------------------------------------------------------
     def on_close_clicked(self):
-        print("Close button clicked - on_close_clicked")
+        #print("Close button clicked - on_close_clicked")
         self.close()
 
     def on_close(self):
-        print("Close button clicked - on_close")
+        #print("Close button clicked - on_close")
         self.close()
 
     #---------------------------------------------------------------
@@ -1371,13 +1403,13 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
     def center(self):
         # Get the screen geometry using QMainWindow
         screen_geometry = self.screen().geometry()
-        print("Screen Geometry (from QMainWindow):", screen_geometry)
+        #print("Screen Geometry (from QMainWindow):", screen_geometry)
 
         # Get the available geometry using QDesktopWidget
         #desktop = QDesktopWidget()
         desktop = QGuiApplication.primaryScreen()
         available_geometry = desktop.availableGeometry()
-        print("Available Geometry (from primaryScreen()):", available_geometry)
+        #print("Available Geometry (from primaryScreen()):", available_geometry)
 
         # Get the window geometry
         window_geometry = self.geometry()
@@ -1434,18 +1466,18 @@ Untick this box or run "MX Updater" from the menu to make the icon visible again
         for key in keys_to_remove:
             self.qsettings.remove(key)
 
-        print("#", "-" * 40)
-        print(f"Save selected settings:")
+        #print("#", "-" * 40)
+        #print(f"Save selected settings:")
         # Step 4: Update existing keys and add new ones
         for key, value in new_settings.items():
-            print(f"{key}={value}")
+            #print(f"{key}={value}")
             self.qsettings.setValue(f"Settings/{key}", value)
-        print("#", "-" * 10, " update_settings ", "-" * 30 )
+        #print("#", "-" * 10, " update_settings ", "-" * 30 )
 
     def print_window_title(self):
         # Get and print the current window title
         title = self.windowTitle()
-        print(f"Current SettingsEditorDialog Title: {title}")
+        #print(f"Current SettingsEditorDialog Title: {title}")
 
 
     def detect_plasma(self):
@@ -1550,11 +1582,12 @@ if __name__ == "__main__":
     try:
         # Check if the app is already running
         if bus.get(SETTINGS_OBJECT_NAME):
-            print("App is already running, restoring window...")
+            print("'MX Updater preferences' is already running, restoring window...")
             bus.get(SETTINGS_OBJECT_NAME).Restore()
             sys.exit(0)
     except Exception as e:
-        print("App is not running, starting new instance...")
+        print("'MX Updater preferences' is not running, starting new instance...")
+        pass
 
 
     #----------------------------------------------------------------
@@ -1568,18 +1601,19 @@ if __name__ == "__main__":
 
     # Load the translation file
     if qtranslator.load(translation_file_path):
-        print(f"Translation file found: {translation_file_path}")
+        #print(f"Translation file found: {translation_file_path}")
         app.installTranslator(qtranslator)
     else:
-        print(f"Translation file not found: {translation_file_path}")
+        #print(f"Translation file not found: {translation_file_path}")
+        pass
 
     #----------------------------------------------------------------
     dialog = SettingsEditorDialog()
 
-    print(f"SettingsEditorDialog title: {dialog.windowTitle()}")
-    print(f"qdbus6 {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  {SETTINGS_OBJECT_IFACE} ")
-    print(f"/usr/lib/qt6/bin/qdbus {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  {SETTINGS_OBJECT_IFACE} ")
-    print(f"/usr/lib/qt6/bin/qdbus {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  ")
+    #print(f"SettingsEditorDialog title: {dialog.windowTitle()}")
+    #print(f"qdbus6 {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  {SETTINGS_OBJECT_IFACE} ")
+    #print(f"/usr/lib/qt6/bin/qdbus {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  {SETTINGS_OBJECT_IFACE} ")
+    #print(f"/usr/lib/qt6/bin/qdbus {SETTINGS_OBJECT_NAME}  {SETTINGS_OBJECT_PATH}  ")
 
     dialog.show()
 

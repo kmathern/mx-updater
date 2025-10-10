@@ -1,3 +1,13 @@
+mx-updater (25.09.06mx25+dev03) mx; urgency=medium
+
+  * List to be installed packages one per-line in unattended-upgrade logs. Thanks kmathern.
+  * Remove degug output from unattended-upgrade logs. Thanks kmathern.
+  * Remove lot's of other debug prints
+  * Add localized pattern to unattended log view
+  * Remove non-used leftover scripts
+
+ -- fehlix <fehlix@mxlinux.org>  Fri, 10 Oct 2025 07:35:12 -0400
+
 mx-updater (25.09.06mx25) mx; urgency=medium
 
   * Add origin 'site=' to origin pattern. Thanks kmathern.

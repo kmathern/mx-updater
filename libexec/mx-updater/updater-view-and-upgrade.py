@@ -28,10 +28,10 @@ import logging
 locale_dir = "/usr/share/locale"
 gettext.bindtextdomain('mx-updater', locale_dir)
 gettext.textdomain('mx-updater')
-_ = gettext.gettext  # Create a shortcut for the translation function
+_ = gettext.gettext
 
 
-logging.basicConfig(level=logging.DEBUG, 
+logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -349,8 +349,14 @@ class ViewAndUpgradeDialog(QDialog):
         self.auto_close_timeout.setValue(auto_close_timeout)
         
     def init_ui(self):
-        self.setWindowTitle(_("View and Upgrade"))
-        self.setWindowIcon(QIcon("/usr/share/icons/mx-updater.png"))
+
+        window_title_updater = _("MX Updater")
+        window_title_view_and_upgrade = _("View and Upgrade")
+        window_title = f"[ {window_title_updater} ] -- {window_title_view_and_upgrade}"
+        window_icon = "/usr/share/icons/hicolor/scalable/mx-updater.svg"
+
+        self.setWindowTitle(window_title)
+        self.setWindowIcon(QIcon(window_icon))
         
         self.log_text = ""
         self.log_cnt = 0
@@ -557,7 +563,7 @@ class ViewAndUpgradeDialog(QDialog):
         self.log_text = self.get_updater_list()
         
     def get_updater_list(self):
-        print("get_updater_list running ...")
+        #print("get_updater_list running ...")
         try:
             command = "/usr/lib/mx-updater/bin/updater_list"
             result = subprocess.run(
@@ -573,7 +579,7 @@ class ViewAndUpgradeDialog(QDialog):
             return f"Error retrieving apt package lists: {str(e)}"
     
     def updater_reload_run(self):
-        logger.debug("updater_reload_run started ...")
+        logger.info("updater_reload_run started ...")
         try:
             command = ["/usr/libexec/mx-updater/updater_action_run", "updater_reload"]
             result = subprocess.run(
@@ -590,7 +596,7 @@ class ViewAndUpgradeDialog(QDialog):
 
     
     def updater_upgrade_run(self):
-        logger.debug("updater_upgrade_run started ...")
+        logger.info("updater_upgrade_run started ...")
         try:
             command = ["/usr/libexec/mx-updater/updater_action_run", "updater_upgrade"]
             result = subprocess.run(
@@ -618,19 +624,19 @@ class ViewAndUpgradeDialog(QDialog):
         default_width  = self.default_width 
         default_height = self.default_height
 
-        print(f"Original size: {default_width}x{default_height}")
+        #print(f"Original size: {default_width}x{default_height}")
 
         # Get the primary screen
         screen = QGuiApplication.primaryScreen()
         
         # Get available screen geometry (accounting for panels)
         available_geometry = screen.availableGeometry()
-        print(f"Screen available: {available_geometry.width()}x{available_geometry.height()}")
+        #print(f"Screen available: {available_geometry.width()}x{available_geometry.height()}")
 
         # Calculate maximum allowed size while preserving aspect ratio
         max_width = int(available_geometry.width() * 0.9)  # 90% of available width
         max_height = int(available_geometry.height() * 0.9)  # 90% of available height
-        print(f"max_width x max_height: {max_width} x {max_height}")
+        #print(f"max_width x max_height: {max_width} x {max_height}")
         
         # Calculate scaling factors
         width_scale = max_width / default_width
@@ -663,7 +669,7 @@ class ViewAndUpgradeDialog(QDialog):
         # Move the window
         self.move(adjusted_pos)
         
-        print(f"Final size: {final_width}x{final_height}")
+        #print(f"Final size: {final_width}x{final_height}")
 
     def keyPressEventXXX(self, event):
         """
@@ -790,11 +796,11 @@ def tooltip_stylesheet():
 if __name__ == "__main__":
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    logger.debug("MX Updater 'View and Upgrade' started.")
+    logger.info("MX Updater 'View and Upgrade' started.")
     try:
         # connect to session bus
         session_bus = dbus.SessionBus()
-        logger.debug("Connected to session bus.")
+        logger.info("Connected to session bus.")
     except dbus.DBusException as e:
         logger.error("Unable to connect to session bus: %r", e)
         logger.error("%s exiting.", VIEW_AND_UPGRADE_OBJECT_NAME)
@@ -808,7 +814,7 @@ if __name__ == "__main__":
             logger.info("%r is already running, exiting.", VIEW_AND_UPGRADE_OBJECT_NAME )
             sys.exit(0)
         else:
-            logger.debug("%r appears to be not running.", VIEW_AND_UPGRADE_OBJECT_NAME )
+            logger.info("%r appears to be not running.", VIEW_AND_UPGRADE_OBJECT_NAME )
 
     except dbus.DBusException as e:
         logger.error("Error checking name ownership: %r", e)
@@ -853,9 +859,9 @@ if __name__ == "__main__":
         dlg.load_settings()
         result = dlg.exec()
         if result == QDialog.DialogCode.Accepted:
-            logger.debug("Reload settings ...")
+            logger.info("Reload settings ...")
             pass
         else:
             break
-    logger.debug("MX Updater 'View and Upgrade' finished.")
+    logger.info("MX Updater 'View and Upgrade' finished.")
     sys.exit(0)

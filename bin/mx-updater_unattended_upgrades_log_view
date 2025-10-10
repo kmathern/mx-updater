@@ -35,22 +35,23 @@ ShowUnattendedUpgradesLogs()
  sed 's/, \x27suite=/,\n\x27suite=/g'
 }
 
-#set strings using translations from the apt-notfier.py python script
-#define a wrapper function so xgettext will ignore the strings here
-mygettext() { gettext "$@"; }
+export TEXTDOMAIN="mx-updater"
+ LessPrompt=$(gettext "Press 'h' for help, 'q' to quit")
+NoLogsFound=$(gettext "No logs found.")
+ SeeHistory=$(gettext "For a less detailed view see 'Auto-update dpkg log(s)' or 'History'.")
 
- LessPrompt=$(mygettext -d mx-updater "Press 'h' for help, 'q' to quit")
-NoLogsFound=$(mygettext -d mx-updater "No logs found.")
- SeeHistory=$(mygettext -d mx-updater "For a less detailed view see 'Auto-update dpkg log(s)' or 'History'.")
+GETTEXT="/usr/bin/gettext"
+PKGS_PATTERN="INFO $($GETTEXT -s -d unattended-upgrades  "Packages that will be upgraded: %s" | sed 's/ %s//')"
+START_PATTERN="INFO $($GETTEXT -s -d unattended-upgrades  "Starting unattended upgrades script")"
 
 if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]
   then
-    Date_of_latest_unattended_upgrades="$(grep "INFO Starting unattended upgrades script" /var/log/unattended-upgrades/unattended-upgrades.log | tail -1| cut -c-10)"
-    StartOfLatestEntry="$(grep $Date_of_latest_unattended_upgrades.*'INFO Starting unattended upgrades script'  /var/log/unattended-upgrades/unattended-upgrades.log | head -1)"
+    Date_of_latest_unattended_upgrades="$(grep "${START_PATTERN}" /var/log/unattended-upgrades/unattended-upgrades.log | tail -1| cut -c-10)"
+    StartOfLatestEntry="$(grep "$Date_of_latest_unattended_upgrades.*${START_PATTERN}"  /var/log/unattended-upgrades/unattended-upgrades.log | head -1)"
     if [ "$1" != "-d" ]
         then
             ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' | grep -v DEBUG | grep -E '^20.* INFO |^o=|^origin=' |\
-            sed '/INFO Packages that will be upgraded:/ s/ /\'$'\n /8g' | less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
+            sed  "/^20.*${PKGS_PATTERN}\s/{ h; s///; s/\s/\n/g; x; s/: .*/:/; p; x}" | less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"
         else
             ShowUnattendedUpgradesLogs | sed -e "\$a\\\n${SeeHistory}\\\\\n" | sed 's/\\$//' |\
             sed '/INFO Packages that will be upgraded:/ s/ /\'$'\n /8g' |less -~ -R --prompt="--less--[$LessPrompt]" -g -p "${StartOfLatestEntry}"

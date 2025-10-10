@@ -66,7 +66,7 @@ class FilterWithAction(QLineEdit):
 
         # placeholder text 
         placeholder_text = _("Filter by")
-        print(f'placeholder_text = _("Filter by") : {placeholder_text}')
+        #print(f'placeholder_text = _("Filter by") : {placeholder_text}')
         self.setPlaceholderText(f"{placeholder_text}...")
         self.setClearButtonEnabled(False)
 
@@ -107,8 +107,9 @@ class LogDialog(QDialog):
         
         self.qsettings_section = "Geometry_Updater_History"
         self.qsettings = QSettings("MX-Linux", "mx-updater")
-        window_title = _("History")
-        window_title = f"[ MX Updater ] - {window_title}"
+        window_title_history = _("History")
+        window_title_updater = _("MX Updater")
+        window_title = f"[ {window_title_updater} ] -- {window_title_history}"
         window_icon = "/usr/share/icons/hicolor/scalable/mx-updater.svg"
         self.setWindowIcon(QIcon(window_icon))
         self.setWindowTitle(window_title)
@@ -120,7 +121,7 @@ class LogDialog(QDialog):
         margin_y = 60   # vertical margin
 
         self.resize(min(1100, x - margin_x), min(600, y - margin_y))
-        print("width height : ", self.width(), self.height())
+        #print("width height : ", self.width(), self.height())
         self.move((x - self.width()) // 2, (y - self.height()) // 2)
         self.setMinimumSize(600, 400)  # Optional: Set minimum size
        
@@ -162,7 +163,7 @@ class LogDialog(QDialog):
         # placeholder text
         #placeholder_text = "Filter..."
         placeholder_text = _("Filter by")
-        print(f'placeholder_text = _("Filter by") : {placeholder_text}')
+        #print(f'placeholder_text = _("Filter by") : {placeholder_text}')
 
         self.search_field.setPlaceholderText(f"{placeholder_text}...")
         # fixed width for search field
@@ -180,8 +181,9 @@ class LogDialog(QDialog):
 
         
         # copy and close button
-        copy_text = _("&Copy")
-        self.copy_button = QPushButton(copy_text, self)
+        copy_text = _("_Copy")
+
+        self.copy_button = QPushButton(copy_text.replace('_','&'), self)
         self.copy_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)) 
 
         # close button - using OK instead of Close
@@ -214,17 +216,15 @@ class LogDialog(QDialog):
         self.restore_dialog_geometry()
 
     def center(self):
-
         # set initial size
-
         # screen geometry
         screen_geometry = self.screen().geometry()
-        print("Screen Geometry (from QMainWindow):", screen_geometry)
+        #print("Screen Geometry (from QMainWindow):", screen_geometry)
 
         # available geometry
         desktop = QGuiApplication.primaryScreen()
         available_geometry = desktop.availableGeometry()
-        print("Available Geometry (from primaryScreen()):", available_geometry)
+        #print("Available Geometry (from primaryScreen()):", available_geometry)
 
         # window geometry
         window_geometry = self.geometry()
@@ -260,7 +260,6 @@ class LogDialog(QDialog):
         clipboard.setText(self.log_text_edit.toPlainText())
 
     def close_and_exit(self):
-
         self.save_dialog_geometry()
         self.accept()  # Close the dialog
 
@@ -323,7 +322,7 @@ class LogDialog(QDialog):
         
         print(f"Final size: {final_width}x{final_height}")
 
-    def keyPressEventXXX(self, event):
+    def keyPressEvent_NotUsed(self, event):
         """
         Override key press event to close window when Esc is pressed.
         
@@ -404,17 +403,14 @@ class LogDialog(QDialog):
             available_geometry.top(), 
             min(pos.y(), available_geometry.bottom() - size.height())
         )
-        
+       
         return QPoint(x, y)
+
     
-
-
-
-
 def get_apt_history():
     try:
         # Run apt-history command and capture the output
-        command = [ "/usr/bin/apt-history" ]
+        command = ["/usr/bin/apt-history"]
         result = subprocess.run(
             command, 
             shell=False,  # Use shell=True to execute the command as a single string
@@ -455,9 +451,10 @@ def get_apt_history():
             # Join formatted lines into a single string with newlines
             return "\n".join(formatted_lines)
         else:
-            return "No apt-history data found!"
+            return _("No apt-history data found!")
     except Exception as e:
-        return f"Error retrieving apt-history: {str(e)}"
+        error=_("Error retrieving apt-history:")
+        return f"{error} {str(e)}"
 
 def get_standard_button_text(button):
     # temporary message box to access the button text
@@ -481,10 +478,10 @@ if __name__ == '__main__':
 
     # load translation file
     if qtranslator.load(translation_file_path):
-        print(f"Translation file for locale {locale} found: {translation_file_path}")
+        #print(f"Translation file for locale {locale} found: {translation_file_path}")
         app.installTranslator(qtranslator)
     else:
-        print(f"Translation file not found: {translation_file_path}")
+        #print(f"Translation file not found: {translation_file_path}")
         pass
 
 
